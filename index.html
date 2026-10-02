@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Shiori — ранобэ онлайн</title>
+    <meta
+      name="description"
+      content="Shiori — уютная онлайн-читалка ранобэ: каталог с умным поиском, удобный ридер, личная библиотека и прогресс чтения."
+    />
+    <meta name="theme-color" content="#09090f" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('shiori-prefs')
+          var prefs = raw ? JSON.parse(raw).state : null
+          var theme = (prefs && prefs.theme) || 'dark'
+          if (theme === 'system') {
+            theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+          }
+          document.documentElement.setAttribute('data-theme', theme)
+          if (prefs && prefs.reduceMotion) document.documentElement.setAttribute('data-motion', 'reduce')
+        } catch (e) {}
+      })()
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Onest:wght@300..800&family=Unbounded:wght@300..900&family=Literata:ital,opsz,wght@0,7..72,300..800;1,7..72,300..800&family=Shippori+Mincho+B1:wght@800&family=Yuji+Syuku&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
