@@ -58,9 +58,9 @@ export default function Dashboard() {
     try {
       const added = await api.importDemo()
       await invalidateCatalog(qc)
-      toast.success(added ? `Добавлено демо-тайтлов: ${added}` : 'Все демо-тайтлы уже в каталоге')
+      toast.success(added ? `Добавлено тайтлов: ${added}` : 'Стартовые тайтлы уже в каталоге')
     } catch (e) {
-      toast.error('Не удалось добавить демо-тайтлы', errorMessage(e))
+      toast.error('Не удалось добавить стартовые тайтлы', errorMessage(e))
     } finally {
       setImporting(false)
     }
@@ -90,7 +90,7 @@ export default function Dashboard() {
           ]}
         />
         <Button variant="secondary" loading={importing} onClick={importDemo} icon={<Sparkles className="h-4 w-4" />}>
-          Демо-тайтлы
+          Стартовые тайтлы
         </Button>
         <ButtonLink to="/admin/novels/new" variant="primary" icon={<Plus className="h-4 w-4" />}>
           Новый тайтл
@@ -103,7 +103,7 @@ export default function Dashboard() {
           <EmptyState
             kanji="創"
             title={novels.length ? 'Ничего не нашлось' : 'Пора опубликовать первый тайтл'}
-            description={novels.length ? 'Попробуйте другой запрос или фильтр.' : 'Создайте тайтл, добавьте главы — или загрузите демо-подборку, чтобы посмотреть, как всё работает.'}
+            description={novels.length ? 'Попробуйте другой запрос или фильтр.' : 'Создайте тайтл и загрузите главы — или добавьте стартовые тайтлы и импортируйте в них текст.'}
             action={
               !novels.length && (
                 <ButtonLink to="/admin/novels/new" variant="primary" icon={<Plus className="h-4 w-4" />}>

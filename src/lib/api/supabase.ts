@@ -513,23 +513,13 @@ export class SupabaseApi implements Api {
 
   async importDemo() {
     await this.requireUser()
-    const { DEMO_NOVELS } = await import('../seed')
+    const { STARTER_NOVELS } = await import('../seed')
     const { data: existing } = await this.sb.from('novels').select('slug')
     const slugs = new Set((existing ?? []).map((r: Row) => r.slug))
     let added = 0
-    for (const demo of DEMO_NOVELS) {
-      if (slugs.has(demo.novel.slug)) continue
-      const novel = await this.createNovel(demo.novel)
-      await this.createChapters(
-        demo.chapters.map((c) => ({
-          novelId: novel.id,
-          volume: c.volume,
-          number: c.number,
-          title: c.title,
-          content: c.content,
-          published: true,
-        }))
-      )
+    for (const starter of STARTER_NOVELS) {
+      if (slugs.has(starter.novel.slug)) continue
+      await this.createNovel(starter.novel)
       added++
     }
     return added

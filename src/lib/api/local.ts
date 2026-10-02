@@ -143,11 +143,30 @@ export class LocalApi implements Api {
       ;(this.t[k] as unknown[]) = rows[i] ?? []
     })
     if (!allowSeed) return
-    const meta = await kvGet<{ seeded?: boolean }>('meta')
-    if (!meta?.seeded) {
-      await this.seedDemo(true)
-      await kvSet('meta', { seeded: true, version: 1 })
+    const meta = await kvGet<{ seeded?: boolean; version?: number }>('meta')
+    if (!meta?.seeded || (meta.version ?? 1) < 2) {
+      // Версия 2: вместо прежних демо-тайтлов — стартовый каталог.
+      if (meta?.seeded) await this.removeRetiredDemo()
+      await this.seedDemo()
+      await kvSet('meta', { seeded: true, version: 2 })
     }
+  }
+
+  private async removeRetiredDemo() {
+    const { RETIRED_DEMO_SLUGS } = await import('../seed')
+    const retired = new Set(RETIRED_DEMO_SLUGS)
+    const ids = new Set(this.t.novels.filter((n) => retired.has(n.slug)).map((n) => n.id))
+    if (!ids.size) return
+    const chapterIds = this.t.chapters.filter((c) => ids.has(c.novelId)).map((c) => c.id)
+    this.t.novels = this.t.novels.filter((n) => !ids.has(n.id))
+    this.t.chapters = this.t.chapters.filter((c) => !ids.has(c.novelId))
+    this.t.library = this.t.library.filter((r) => !ids.has(r.novelId))
+    this.t.progress = this.t.progress.filter((r) => !ids.has(r.novelId))
+    this.t.reads = this.t.reads.filter((r) => !ids.has(r.novelId))
+    this.t.ratings = this.t.ratings.filter((r) => !ids.has(r.novelId))
+    this.t.bookmarks = this.t.bookmarks.filter((r) => !ids.has(r.novelId))
+    await Promise.all(chapterIds.map((cid) => kvDel(contentKey(cid))))
+    await this.save(...TABLES.filter((t) => t !== 'users'))
   }
 
   private async save(...tables: (keyof Tables)[]) {
@@ -612,45 +631,33 @@ export class LocalApi implements Api {
   async importDemo() {
     await this.ready
     this.requireAdmin()
-    return this.seedDemo(false)
+    return this.seedDemo()
   }
 
-  private async seedDemo(initial: boolean) {
-    const { DEMO_NOVELS } = await import('../seed')
+  private async seedDemo() {
+    const { STARTER_NOVELS } = await import('../seed')
     const day = 86_400_000
     const base = Date.now()
     let added = 0
-    for (const demo of DEMO_NOVELS) {
-      if (this.t.novels.some((n) => n.slug === demo.novel.slug)) continue
-      const id = shortId(14)
-      const createdAt = new Date(base - demo.addedDaysAgo * day).toISOString()
+    for (const starter of STARTER_NOVELS) {
+      if (this.t.novels.some((n) => n.slug === starter.novel.slug)) continue
+      const createdAt = new Date(base - starter.addedDaysAgo * day).toISOString()
       const novel: Novel = {
-        ...demo.novel,
-        id,
-        views: initial ? demo.stats.views : 0,
-        ratingSum: initial ? demo.stats.ratingSum : 0,
-        ratingCount: initial ? demo.stats.ratingCount : 0,
-        libraryCount: initial ? demo.stats.libraryCount : 0,
+        ...starter.novel,
+        id: shortId(14),
+        views: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        libraryCount: 0,
         chaptersCount: 0,
         lastChapterAt: null,
         createdAt,
         updatedAt: createdAt,
       }
       this.t.novels.push(novel)
-      for (const ch of demo.chapters) {
-        const at = new Date(base - ch.daysAgo * day - Math.round(ch.daysAgo * 3_600_000 * 1.7)).toISOString()
-        const meta = this.buildChapter(
-          { novelId: id, volume: ch.volume, number: ch.number, title: ch.title, content: ch.content, published: true },
-          at
-        )
-        await kvSet(contentKey(meta.id), ch.content)
-        this.t.chapters.push(meta)
-      }
-      this.recompute(id)
-      novel.updatedAt = novel.lastChapterAt ?? createdAt
       added++
     }
-    await this.save('novels', 'chapters')
+    await this.save('novels')
     return added
   }
 
