@@ -64,7 +64,8 @@ function ProfileCard() {
   const save = async () => {
     setPending(true)
     try {
-      await api.updateProfile({ displayName, username, bio, aura, titleId })
+      // Титул отправляем, только если его поменяли: так сохранение работает и до обновления схемы базы.
+      await api.updateProfile({ displayName, username, bio, aura, ...(titleId !== user.titleId ? { titleId } : {}) })
       toast.success('Профиль обновлён')
     } catch (e) {
       toast.error('Не удалось сохранить', errorMessage(e))
