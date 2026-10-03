@@ -24,6 +24,7 @@ import { ChapterContent } from '../components/reader/ChapterContent'
 import { SettingsPanel } from '../components/reader/SettingsPanel'
 import { useTts } from '../components/reader/useTts'
 import { ChapterList } from '../components/novel/ChapterList'
+import { Comments } from '../components/social/Comments'
 import { Cover } from '../components/novel/Cover'
 import { ButtonLink } from '../components/ui/Button'
 import { EmptyState, PageLoader, ProgressBar } from '../components/ui/Feedback'
@@ -487,7 +488,7 @@ export default function Reader() {
     const start = pointer.current
     pointer.current = null
     if (!start) return
-    if ((e.target as Element).closest('a,button,figure')) return
+    if ((e.target as Element).closest('a,button,figure,textarea,input,[data-no-toggle]')) return
     const dx = e.clientX - start.x
     const dy = e.clientY - start.y
     if (window.getSelection()?.toString()) return
@@ -656,6 +657,11 @@ export default function Reader() {
           <div ref={contentRef} className="mx-auto" style={{ maxWidth: s.width }}>
             {content}
           </div>
+          {chapter.published && (
+            <div data-no-toggle className="mx-auto mt-16 rounded-[28px] border border-line/10 bg-surface p-5 text-fg sm:p-7" style={{ maxWidth: Math.max(s.width, 560) }}>
+              <Comments novelId={novel.id} chapterId={chapter.id} />
+            </div>
+          )}
         </main>
       )}
 

@@ -2,27 +2,47 @@ import type {
   AdminUser,
   Bookmark,
   BookmarkInput,
+  Card,
+  CardInput,
+  CaseInput,
+  CaseType,
   Chapter,
   ChapterInput,
   ChapterMeta,
   ChapterRead,
+  Comment,
+  CommentInput,
+  FriendEntry,
+  FriendStatus,
   LibraryEntry,
   Novel,
   NovelInput,
+  OwnedCard,
+  OwnedCase,
   Profile,
   ProfilePatch,
   ProgressEntry,
+  PublicProfile,
+  Purchase,
   RatingEntry,
+  ReadingSummary,
   Role,
   Shelf,
+  Title,
+  TitleInput,
+  Trade,
+  TradeInput,
   UserData,
+  UserTitle,
+  WeeklyStatus,
 } from '../../types'
+import { nextWeekly, rollCard } from '../collect'
 import { hashString, shortId } from '../id'
 import { blobToDataUrl } from '../image'
 import { kvDel, kvGet, kvSet, safeStorage } from '../kv'
 import { countWords } from '../text'
 import { slugify } from '../translit'
-import { ApiError, type Api, type ListOptions, type SignUpInput, type SignUpResult } from './types'
+import { ApiError, type Api, type ImageKind, type ListOptions, type SignUpInput, type SignUpResult } from './types'
 import { validateEmail, validatePassword, validateUsername } from './validation'
 
 /**
@@ -38,6 +58,13 @@ interface LocalUser extends Profile {
 
 type Owned<T> = T & { userId: string }
 
+interface LocalFriendship {
+  requester: string
+  addressee: string
+  status: 'pending' | 'accepted'
+  createdAt: string
+}
+
 interface Tables {
   users: LocalUser[]
   novels: Novel[]
@@ -47,6 +74,15 @@ interface Tables {
   reads: Owned<ChapterRead>[]
   ratings: Owned<RatingEntry>[]
   bookmarks: Owned<Bookmark>[]
+  friendships: LocalFriendship[]
+  comments: Omit<Comment, 'author'>[]
+  titles: Title[]
+  userTitles: UserTitle[]
+  cards: Card[]
+  cases: CaseType[]
+  userCases: OwnedCase[]
+  userCards: OwnedCard[]
+  trades: Trade[]
 }
 
 const TABLES: (keyof Tables)[] = [
@@ -58,6 +94,15 @@ const TABLES: (keyof Tables)[] = [
   'reads',
   'ratings',
   'bookmarks',
+  'friendships',
+  'comments',
+  'titles',
+  'userTitles',
+  'cards',
+  'cases',
+  'userCases',
+  'userCards',
+  'trades',
 ]
 
 const SESSION_KEY = 'shiori-session'
@@ -66,7 +111,12 @@ const now = () => new Date().toISOString()
 
 function toProfile(u: LocalUser): Profile {
   const { passwordHash: _h, salt: _s, ...profile } = u
-  return { ...profile }
+  return { ...profile, titleId: profile.titleId ?? null }
+}
+
+function toPublic(u: LocalUser): PublicProfile {
+  const { email: _e, ...rest } = toProfile(u)
+  return rest
 }
 
 function strip<T extends { userId: string }>(row: T): Omit<T, 'userId'> {
@@ -108,6 +158,15 @@ export class LocalApi implements Api {
     reads: [],
     ratings: [],
     bookmarks: [],
+    friendships: [],
+    comments: [],
+    titles: [],
+    userTitles: [],
+    cards: [],
+    cases: [],
+    userCases: [],
+    userCards: [],
+    trades: [],
   }
   private ready: Promise<void>
   private authListeners = new Set<(p: Profile | null) => void>()
@@ -247,6 +306,7 @@ export class LocalApi implements Api {
       avatarUrl: null,
       aura: 'ember',
       role: this.t.users.some((u) => u.role === 'admin') ? 'user' : 'admin',
+      titleId: null,
       createdAt: now(),
       salt,
       passwordHash: await hashPassword(input.password, salt),
@@ -288,6 +348,11 @@ export class LocalApi implements Api {
     if (patch.bio !== undefined) user.bio = patch.bio.trim().slice(0, 280)
     if (patch.avatarUrl !== undefined) user.avatarUrl = patch.avatarUrl
     if (patch.aura !== undefined) user.aura = patch.aura
+    if (patch.titleId !== undefined) {
+      const owns = !patch.titleId || this.t.userTitles.some((t) => t.userId === user.id && t.titleId === patch.titleId)
+      if (!owns) throw new ApiError('Этот титул вам ещё не выдан', 'forbidden')
+      user.titleId = patch.titleId
+    }
     await this.save('users')
     this.emitAuth()
     return toProfile(user)
@@ -342,7 +407,7 @@ export class LocalApi implements Api {
     return this.t.users.some((u) => u.id !== me && u.username.toLowerCase() === name)
   }
 
-  async uploadImage(_kind: 'cover' | 'avatar', file: Blob) {
+  async uploadImage(_kind: ImageKind, file: Blob) {
     return blobToDataUrl(file)
   }
 
@@ -370,6 +435,12 @@ export class LocalApi implements Api {
     this.t.reads = mine(this.t.reads)
     this.t.ratings = mine(this.t.ratings)
     this.t.bookmarks = mine(this.t.bookmarks)
+    this.t.userTitles = mine(this.t.userTitles)
+    this.t.userCases = mine(this.t.userCases)
+    this.t.userCards = mine(this.t.userCards)
+    this.t.comments = mine(this.t.comments)
+    this.t.friendships = this.t.friendships.filter((f) => f.requester !== user.id && f.addressee !== user.id)
+    this.t.trades = this.t.trades.filter((t) => t.fromUser !== user.id && t.toUser !== user.id)
     this.t.users = this.t.users.filter((u) => u.id !== user.id)
     await this.save(...TABLES)
     this.setSession(null)
@@ -790,5 +861,514 @@ export class LocalApi implements Api {
     this.t.reads = this.t.reads.filter((r) => r.userId !== user.id)
     this.t.progress = this.t.progress.filter((r) => r.userId !== user.id)
     await this.save('reads', 'progress')
+  }
+
+  // ───────────────────────── Читатели и друзья ─────────────────────────
+
+  private userById(id: string) {
+    return this.t.users.find((u) => u.id === id)
+  }
+
+  async searchUsers(query: string) {
+    await this.ready
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    return this.t.users
+      .filter((u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q))
+      .sort(
+        (a, b) =>
+          Number(b.username.toLowerCase() === q) - Number(a.username.toLowerCase() === q) ||
+          a.username.length - b.username.length
+      )
+      .slice(0, 30)
+      .map(toPublic)
+  }
+
+  async getPublicProfile(username: string) {
+    await this.ready
+    const name = username.trim().toLowerCase()
+    const user = this.t.users.find((u) => u.username.toLowerCase() === name)
+    return user ? toPublic(user) : null
+  }
+
+  async getProfileById(id: string) {
+    await this.ready
+    const user = this.userById(id)
+    return user ? toPublic(user) : null
+  }
+
+  async listFriends(): Promise<FriendEntry[]> {
+    await this.ready
+    const me = this.requireUser()
+    const out: FriendEntry[] = []
+    for (const f of this.t.friendships) {
+      if (f.requester !== me.id && f.addressee !== me.id) continue
+      const other = this.userById(f.requester === me.id ? f.addressee : f.requester)
+      if (!other) continue
+      out.push({
+        profile: toPublic(other),
+        status: f.status === 'accepted' ? 'friends' : f.requester === me.id ? 'outgoing' : 'incoming',
+        since: f.createdAt,
+      })
+    }
+    return out
+  }
+
+  private pair(a: string, b: string) {
+    return this.t.friendships.find(
+      (f) => (f.requester === a && f.addressee === b) || (f.requester === b && f.addressee === a)
+    )
+  }
+
+  async sendFriendRequest(userId: string): Promise<FriendStatus> {
+    await this.ready
+    const me = this.requireUser()
+    if (userId === me.id) throw new ApiError('Нельзя добавить в друзья самого себя')
+    if (!this.userById(userId)) throw new ApiError('Пользователь не найден', 'not_found')
+    const existing = this.pair(me.id, userId)
+    if (existing) {
+      if (existing.status === 'accepted') return 'friends'
+      if (existing.requester === userId) {
+        existing.status = 'accepted'
+        existing.createdAt = now()
+        await this.save('friendships')
+        return 'friends'
+      }
+      return 'outgoing'
+    }
+    this.t.friendships.push({ requester: me.id, addressee: userId, status: 'pending', createdAt: now() })
+    await this.save('friendships')
+    return 'outgoing'
+  }
+
+  async respondFriendRequest(userId: string, accept: boolean) {
+    await this.ready
+    const me = this.requireUser()
+    const f = this.t.friendships.find((x) => x.requester === userId && x.addressee === me.id && x.status === 'pending')
+    if (!f) return
+    if (accept) {
+      f.status = 'accepted'
+      f.createdAt = now()
+    } else {
+      this.t.friendships = this.t.friendships.filter((x) => x !== f)
+    }
+    await this.save('friendships')
+  }
+
+  async removeFriend(userId: string) {
+    await this.ready
+    const me = this.requireUser()
+    this.t.friendships = this.t.friendships.filter((f) => f !== this.pair(me.id, userId))
+    await this.save('friendships')
+  }
+
+  // ───────────────────────── Комментарии ─────────────────────────
+
+  private withAuthor(c: Omit<Comment, 'author'>): Comment {
+    const author = this.userById(c.userId)
+    return { ...c, author: author ? toPublic(author) : null }
+  }
+
+  async listComments(novelId: string, chapterId: string | null) {
+    await this.ready
+    const novel = this.t.novels.find((n) => n.id === novelId)
+    if (!novel || (!novel.published && !this.isAdmin())) return []
+    return this.t.comments
+      .filter((c) => c.novelId === novelId && (c.chapterId ?? null) === chapterId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((c) => this.withAuthor(c))
+  }
+
+  async addComment(input: CommentInput) {
+    await this.ready
+    const me = this.requireUser()
+    const body = input.body.trim()
+    if (!body) throw new ApiError('Напишите что-нибудь')
+    if (body.length > 2000) throw new ApiError('Комментарий длиннее 2000 символов')
+    let { novelId } = input
+    let chapterId = input.chapterId ?? null
+    let parentId = input.parentId ?? null
+    if (parentId) {
+      const parent = this.t.comments.find((c) => c.id === parentId)
+      if (!parent) throw new ApiError('Комментарий, на который вы отвечаете, удалён')
+      parentId = parent.parentId ?? parent.id
+      novelId = parent.novelId
+      chapterId = parent.chapterId
+    }
+    const row = { id: shortId(14), novelId, chapterId, parentId, userId: me.id, body, createdAt: now() }
+    this.t.comments.push(row)
+    await this.save('comments')
+    return this.withAuthor(row)
+  }
+
+  async deleteComment(id: string) {
+    await this.ready
+    const me = this.requireUser()
+    const c = this.t.comments.find((x) => x.id === id)
+    if (!c) return
+    if (c.userId !== me.id && me.role !== 'admin') throw new ApiError('Можно удалять только свои комментарии', 'forbidden')
+    this.t.comments = this.t.comments.filter((x) => x.id !== id && x.parentId !== id)
+    await this.save('comments')
+  }
+
+  // ───────────────────────── Титулы ─────────────────────────
+
+  async listTitles() {
+    await this.ready
+    return [...this.t.titles]
+  }
+
+  async listUserTitles(userId: string) {
+    await this.ready
+    return this.t.userTitles.filter((t) => t.userId === userId)
+  }
+
+  async saveTitle(input: TitleInput, id?: string) {
+    await this.ready
+    this.requireAdmin()
+    const name = input.name.trim()
+    if (!name) throw new ApiError('Укажите название титула')
+    const data = { name, description: input.description.trim(), tone: input.tone, novelId: input.novelId }
+    if (id) {
+      const title = this.t.titles.find((t) => t.id === id)
+      if (!title) throw new ApiError('Титул не найден', 'not_found')
+      Object.assign(title, data)
+      await this.save('titles')
+      return { ...title }
+    }
+    const title: Title = { id: shortId(14), ...data, createdAt: now() }
+    this.t.titles.push(title)
+    await this.save('titles')
+    return title
+  }
+
+  async deleteTitle(id: string) {
+    await this.ready
+    this.requireAdmin()
+    this.t.titles = this.t.titles.filter((t) => t.id !== id)
+    this.t.userTitles = this.t.userTitles.filter((t) => t.titleId !== id)
+    for (const u of this.t.users) if (u.titleId === id) u.titleId = null
+    await this.save('titles', 'userTitles', 'users')
+    this.emitAuth()
+  }
+
+  async grantTitle(userId: string, titleId: string) {
+    await this.ready
+    this.requireAdmin()
+    if (this.t.userTitles.some((t) => t.userId === userId && t.titleId === titleId)) return
+    this.t.userTitles.push({ userId, titleId, grantedAt: now() })
+    await this.save('userTitles')
+  }
+
+  async revokeTitle(userId: string, titleId: string) {
+    await this.ready
+    this.requireAdmin()
+    this.t.userTitles = this.t.userTitles.filter((t) => !(t.userId === userId && t.titleId === titleId))
+    const user = this.userById(userId)
+    if (user?.titleId === titleId) user.titleId = null
+    await this.save('userTitles', 'users')
+    this.emitAuth()
+  }
+
+  // ───────────────────────── Карточки и кейсы ─────────────────────────
+
+  async listCards() {
+    await this.ready
+    return [...this.t.cards]
+  }
+
+  async saveCard(input: CardInput, id?: string) {
+    await this.ready
+    this.requireAdmin()
+    const data = { ...input, name: input.name.trim(), description: input.description.trim() }
+    if (!data.name) throw new ApiError('Укажите имя персонажа')
+    if (id) {
+      const card = this.t.cards.find((c) => c.id === id)
+      if (!card) throw new ApiError('Карточка не найдена', 'not_found')
+      Object.assign(card, data)
+      await this.save('cards')
+      return { ...card }
+    }
+    const card: Card = { id: shortId(14), ...data, createdAt: now() }
+    this.t.cards.push(card)
+    await this.save('cards')
+    return card
+  }
+
+  async deleteCard(id: string) {
+    await this.ready
+    this.requireAdmin()
+    this.t.cards = this.t.cards.filter((c) => c.id !== id)
+    this.t.userCards = this.t.userCards.filter((c) => c.cardId !== id)
+    await this.save('cards', 'userCards')
+  }
+
+  async listCases() {
+    await this.ready
+    return this.t.cases.filter((c) => c.active || this.isAdmin())
+  }
+
+  async saveCase(input: CaseInput, id?: string) {
+    await this.ready
+    this.requireAdmin()
+    const data = { ...input, name: input.name.trim(), description: input.description.trim(), price: Math.max(0, input.price) }
+    if (!data.name) throw new ApiError('Укажите название кейса')
+    if (id) {
+      const box = this.t.cases.find((c) => c.id === id)
+      if (!box) throw new ApiError('Кейс не найден', 'not_found')
+      Object.assign(box, data)
+      await this.save('cases')
+      return { ...box }
+    }
+    const box: CaseType = { id: shortId(14), ...data, createdAt: now() }
+    this.t.cases.push(box)
+    await this.save('cases')
+    return box
+  }
+
+  async deleteCase(id: string) {
+    await this.ready
+    this.requireAdmin()
+    this.t.cases = this.t.cases.filter((c) => c.id !== id)
+    this.t.userCases = this.t.userCases.filter((c) => c.caseId !== id)
+    await this.save('cases', 'userCases')
+  }
+
+  async listUserCards(userId: string) {
+    await this.ready
+    return this.t.userCards
+      .filter((c) => c.userId === userId)
+      .sort((a, b) => b.obtainedAt.localeCompare(a.obtainedAt))
+  }
+
+  async getOwnedCards(ids: string[]) {
+    await this.ready
+    const set = new Set(ids)
+    return this.t.userCards.filter((c) => set.has(c.id))
+  }
+
+  async listMyCases() {
+    await this.ready
+    return this.listCasesOf(this.requireUser().id)
+  }
+
+  async listCasesOf(userId: string) {
+    await this.ready
+    const me = this.requireUser()
+    if (me.id !== userId && me.role !== 'admin') throw new ApiError('Недостаточно прав', 'forbidden')
+    return this.t.userCases
+      .filter((c) => c.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+
+  private weeklyCase() {
+    return this.t.cases.filter((c) => c.weekly && c.active).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
+  }
+
+  async weeklyStatus(): Promise<WeeklyStatus> {
+    await this.ready
+    const box = this.weeklyCase()
+    const me = this.me()
+    if (!box || !me) return { caseId: box?.id ?? null, availableAt: null }
+    const last = this.t.userCases
+      .filter((c) => c.userId === me.id && c.source === 'weekly')
+      .reduce<string | null>((m, c) => (!m || c.createdAt > m ? c.createdAt : m), null)
+    return { caseId: box.id, availableAt: nextWeekly(last) }
+  }
+
+  async claimWeeklyCase() {
+    await this.ready
+    const me = this.requireUser()
+    const box = this.weeklyCase()
+    if (!box) throw new ApiError('Еженедельный кейс пока не настроен')
+    const status = await this.weeklyStatus()
+    if (status.availableAt) {
+      const when = new Date(status.availableAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+      throw new ApiError(`Следующий бесплатный кейс будет доступен ${when}`)
+    }
+    const owned: OwnedCase = {
+      id: shortId(14),
+      userId: me.id,
+      caseId: box.id,
+      source: 'weekly',
+      createdAt: now(),
+      openedAt: null,
+      cardId: null,
+    }
+    this.t.userCases.push(owned)
+    await this.save('userCases')
+    return owned
+  }
+
+  async openCase(ownedCaseId: string) {
+    await this.ready
+    const me = this.requireUser()
+    const owned = this.t.userCases.find((c) => c.id === ownedCaseId && c.userId === me.id)
+    if (!owned) throw new ApiError('Кейс не найден', 'not_found')
+    if (owned.openedAt) throw new ApiError('Этот кейс уже открыт')
+    const box = this.t.cases.find((c) => c.id === owned.caseId)
+    const card = box ? rollCard(box, this.t.cards) : null
+    if (!card) throw new ApiError('В этом кейсе пока нет карточек')
+    const result: OwnedCard = { id: shortId(14), userId: me.id, cardId: card.id, source: 'case', obtainedAt: now() }
+    this.t.userCards.push(result)
+    owned.openedAt = now()
+    owned.cardId = card.id
+    await this.save('userCards', 'userCases')
+    return result
+  }
+
+  async grantCase(userId: string, caseId: string, quantity: number) {
+    await this.ready
+    this.requireAdmin()
+    if (quantity < 1 || quantity > 100) throw new ApiError('Можно выдать от 1 до 100 кейсов за раз')
+    for (let i = 0; i < quantity; i++) {
+      this.t.userCases.push({ id: shortId(14), userId, caseId, source: 'admin', createdAt: now(), openedAt: null, cardId: null })
+    }
+    await this.save('userCases')
+  }
+
+  async grantCard(userId: string, cardId: string) {
+    await this.ready
+    this.requireAdmin()
+    this.t.userCards.push({ id: shortId(14), userId, cardId, source: 'admin', obtainedAt: now() })
+    await this.save('userCards')
+  }
+
+  async removeUserCard(ownedCardId: string) {
+    await this.ready
+    this.requireAdmin()
+    this.t.userCards = this.t.userCards.filter((c) => c.id !== ownedCardId)
+    await this.save('userCards')
+  }
+
+  // ───────────────────────── Обмены ─────────────────────────
+
+  async listTrades() {
+    await this.ready
+    const me = this.requireUser()
+    return this.t.trades
+      .filter((t) => t.fromUser === me.id || t.toUser === me.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+
+  private owns(userId: string, ids: string[]) {
+    return ids.every((id) => this.t.userCards.some((c) => c.id === id && c.userId === userId))
+  }
+
+  async createTrade(input: TradeInput) {
+    await this.ready
+    const me = this.requireUser()
+    if (input.toUser === me.id) throw new ApiError('Нельзя обменяться с самим собой')
+    if (!input.offer.length && !input.request.length) throw new ApiError('Выберите хотя бы одну карточку')
+    if (input.offer.length > 10 || input.request.length > 10) throw new ApiError('Не больше 10 карточек с каждой стороны')
+    if (!this.owns(me.id, input.offer)) throw new ApiError('Часть ваших карточек уже не у вас')
+    if (!this.owns(input.toUser, input.request)) throw new ApiError('Часть карточек собеседника уже не у него')
+    const trade: Trade = {
+      id: shortId(14),
+      fromUser: me.id,
+      toUser: input.toUser,
+      offer: [...new Set(input.offer)],
+      request: [...new Set(input.request)],
+      message: (input.message ?? '').slice(0, 300),
+      status: 'pending',
+      createdAt: now(),
+      resolvedAt: null,
+    }
+    this.t.trades.push(trade)
+    await this.save('trades')
+    return trade
+  }
+
+  async respondTrade(id: string, accept: boolean) {
+    await this.ready
+    const me = this.requireUser()
+    const trade = this.t.trades.find((t) => t.id === id && t.toUser === me.id && t.status === 'pending')
+    if (!trade) throw new ApiError('Предложение обмена не найдено или уже закрыто')
+    trade.resolvedAt = now()
+    if (!accept) {
+      trade.status = 'declined'
+      await this.save('trades')
+      return
+    }
+    if (!this.owns(trade.fromUser, trade.offer) || !this.owns(trade.toUser, trade.request)) {
+      trade.status = 'cancelled'
+      await this.save('trades')
+      throw new ApiError('Обмен невозможен: часть карточек уже сменила владельца')
+    }
+    for (const c of this.t.userCards) {
+      if (trade.offer.includes(c.id)) Object.assign(c, { userId: trade.toUser, source: 'trade', obtainedAt: now() })
+      else if (trade.request.includes(c.id)) Object.assign(c, { userId: trade.fromUser, source: 'trade', obtainedAt: now() })
+    }
+    trade.status = 'accepted'
+    await this.save('trades', 'userCards')
+  }
+
+  async cancelTrade(id: string) {
+    await this.ready
+    const me = this.requireUser()
+    const trade = this.t.trades.find((t) => t.id === id && t.fromUser === me.id && t.status === 'pending')
+    if (!trade) return
+    trade.status = 'cancelled'
+    trade.resolvedAt = now()
+    await this.save('trades')
+  }
+
+  // ───────────────────────── Покупки ─────────────────────────
+
+  readonly paymentsEnabled = false
+
+  async buyCase(_caseId: string, _quantity: number): Promise<{ purchaseId: string; payUrl: string }> {
+    throw new ApiError('Покупка кейсов работает, когда сайт подключён к Supabase и размещён на Vercel')
+  }
+
+  async checkPurchases() {
+    return 0
+  }
+
+  async listPurchases(): Promise<Purchase[]> {
+    return []
+  }
+
+  // ───────────────────────── Админка: читатели ─────────────────────────
+
+  async adminUpdateProfile(userId: string, patch: ProfilePatch) {
+    await this.ready
+    this.requireAdmin()
+    const user = this.userById(userId)
+    if (!user) throw new ApiError('Пользователь не найден', 'not_found')
+    if (patch.username !== undefined) {
+      const username = patch.username.trim()
+      validateUsername(username)
+      if (this.t.users.some((u) => u.id !== userId && u.username.toLowerCase() === username.toLowerCase())) {
+        throw new ApiError('Этот никнейм уже занят', 'username_taken')
+      }
+      user.username = username
+    }
+    if (patch.displayName !== undefined) user.displayName = patch.displayName.trim().slice(0, 40)
+    if (patch.bio !== undefined) user.bio = patch.bio.trim().slice(0, 280)
+    if (patch.avatarUrl !== undefined) user.avatarUrl = patch.avatarUrl
+    if (patch.aura !== undefined) user.aura = patch.aura
+    if (patch.titleId !== undefined) user.titleId = patch.titleId
+    await this.save('users')
+    this.emitAuth()
+    return toPublic(user)
+  }
+
+  async userReading(userId: string): Promise<ReadingSummary[]> {
+    await this.ready
+    this.requireAdmin()
+    const byNovel = new Map<string, { count: number; last: string }>()
+    for (const r of this.t.reads.filter((x) => x.userId === userId)) {
+      const cur = byNovel.get(r.novelId) ?? { count: 0, last: r.readAt }
+      byNovel.set(r.novelId, { count: cur.count + 1, last: r.readAt > cur.last ? r.readAt : cur.last })
+    }
+    return [...byNovel.entries()]
+      .map(([novelId, v]) => ({
+        novelId,
+        chaptersRead: v.count,
+        chaptersTotal: this.t.novels.find((n) => n.id === novelId)?.chaptersCount ?? 0,
+        lastReadAt: v.last,
+      }))
+      .sort((a, b) => (b.lastReadAt ?? '').localeCompare(a.lastReadAt ?? ''))
   }
 }

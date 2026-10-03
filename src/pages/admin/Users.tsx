@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Crown, Search, ShieldOff, UserRound } from 'lucide-react'
+import { Crown, Search, Settings2, ShieldOff, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Avatar } from '../../components/ui/Avatar'
-import { Button } from '../../components/ui/Button'
+import { Button, ButtonLink } from '../../components/ui/Button'
 import { EmptyState, Skeleton } from '../../components/ui/Feedback'
 import { ConfirmDialog } from '../../components/ui/Overlay'
 import { api, errorMessage, isCloud } from '../../lib/api'
@@ -68,6 +68,9 @@ export default function UsersPage() {
                 </p>
               </div>
               <p className="text-xs text-faint">с {formatDate(u.createdAt)}</p>
+              <ButtonLink to={`/admin/users/${u.id}`} size="sm" variant="secondary" icon={<Settings2 className="h-4 w-4" />}>
+                Управлять
+              </ButtonLink>
               <Button
                 size="sm"
                 variant={u.role === 'admin' ? 'ghost' : 'secondary'}
@@ -85,8 +88,8 @@ export default function UsersPage() {
       <div className="mt-8 flex gap-3 rounded-3xl border border-line/[0.08] bg-line/[0.03] p-5 text-sm text-muted">
         <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <p>
-          Администраторы могут публиковать, редактировать и удалять тайтлы и главы, а также управлять ролями. Последнего администратора лишить
-          прав нельзя.
+          Администраторы могут публиковать, редактировать и удалять тайтлы и главы, управлять ролями, править чужие профили, выдавать титулы,
+          кейсы и карточки (кнопка «Управлять»). Последнего администратора лишить прав нельзя.
         </p>
       </div>
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { TitleBadge } from '../components/collect/Collect'
 import { Embers } from '../components/effects/Embers'
 import { CountUp } from '../components/effects/Motion'
 import { NovelGrid } from '../components/novel/NovelCard'
@@ -32,7 +33,7 @@ import { useTitle } from '../hooks/useTitle'
 import { SHELVES, SHELF_ORDER, auraInfo } from '../lib/constants'
 import { cn } from '../lib/cn'
 import { formatDate, formatDuration, formatNumber, plural } from '../lib/format'
-import { useAllProgress, useNovelMap, useUserData } from '../lib/queries'
+import { useAllProgress, useNovelMap, useTitleMap, useUserData } from '../lib/queries'
 import { computeAchievements, computeStats } from '../lib/stats'
 import { useAuth } from '../store/auth'
 import type { Novel, Shelf } from '../types'
@@ -126,6 +127,7 @@ export default function Profile() {
   const stats = useMemo(() => computeStats(data, novels), [data, novels])
   const achievements = useMemo(() => computeAchievements(stats), [stats])
   const aura = auraInfo(user.aura)
+  const titles = useTitleMap()
   useTitle('Личный кабинет')
 
   const unlocked = achievements.filter((a) => a.unlocked)
@@ -168,6 +170,7 @@ export default function Profile() {
                   <Crown className="h-3.5 w-3.5" /> Администратор
                 </span>
               )}
+              {user.titleId && <TitleBadge title={titles.get(user.titleId)} className="bg-black/30 backdrop-blur" />}
             </div>
             <p className="mt-1 text-sm text-white/75">
               @{user.username} · с нами с {formatDate(user.createdAt)}
@@ -188,6 +191,14 @@ export default function Profile() {
           <div className="flex flex-wrap gap-2">
             <ButtonLink to="/profile/settings" variant="light" size="sm" icon={<PenLine className="h-4 w-4" />}>
               Редактировать
+            </ButtonLink>
+            <ButtonLink
+              to={`/u/${encodeURIComponent(user.username)}`}
+              size="sm"
+              variant="outline"
+              className="border-white/30 bg-white/10 text-white hover:bg-white/20"
+            >
+              Как видят другие
             </ButtonLink>
             {user.role === 'admin' && (
               <ButtonLink to="/admin" size="sm" className="border-white/30 bg-white/10 text-white hover:bg-white/20" variant="outline" icon={<LayoutDashboard className="h-4 w-4" />}>

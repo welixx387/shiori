@@ -7,13 +7,15 @@ import { USERNAME_RE } from '../../lib/api/validation'
 import { AURAS } from '../../lib/constants'
 import { cn } from '../../lib/cn'
 import { resizeImage } from '../../lib/image'
+import { useTitleMap, useUserTitles } from '../../lib/queries'
 import { useAuth } from '../../store/auth'
 import { usePrefs, type ThemePref } from '../../store/prefs'
 import { useReaderSettings } from '../../store/reader'
 import { toast } from '../../store/toast'
+import { TitleBadge } from '../collect/Collect'
 import { Avatar } from '../ui/Avatar'
 import { Button } from '../ui/Button'
-import { Segmented, Switch } from '../ui/Controls'
+import { Chip, Segmented, Switch } from '../ui/Controls'
 import { Input, PasswordInput, Textarea } from '../ui/Field'
 import { ConfirmDialog } from '../ui/Overlay'
 
@@ -38,12 +40,16 @@ function ProfileCard() {
   const [username, setUsername] = useState(user.username)
   const [bio, setBio] = useState(user.bio)
   const [aura, setAura] = useState(user.aura)
+  const [titleId, setTitleId] = useState(user.titleId)
+  const { data: myTitles = [] } = useUserTitles(user.id)
+  const titleMap = useTitleMap()
   const [nameError, setNameError] = useState('')
   const [pending, setPending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const dirty = displayName !== user.displayName || username !== user.username || bio !== user.bio || aura !== user.aura
+  const dirty =
+    displayName !== user.displayName || username !== user.username || bio !== user.bio || aura !== user.aura || titleId !== user.titleId
 
   useEffect(() => {
     if (username === user.username) return setNameError('')
@@ -58,7 +64,7 @@ function ProfileCard() {
   const save = async () => {
     setPending(true)
     try {
-      await api.updateProfile({ displayName, username, bio, aura })
+      await api.updateProfile({ displayName, username, bio, aura, titleId })
       toast.success('Профиль обновлён')
     } catch (e) {
       toast.error('Не удалось сохранить', errorMessage(e))
@@ -149,6 +155,23 @@ function ProfileCard() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="sm:col-span-2">
+            <p className="mb-2 px-1 text-[13px] font-medium text-fg-2">Титул рядом с ником</p>
+            {myTitles.length ? (
+              <div className="flex flex-wrap gap-2">
+                <Chip active={!titleId} onClick={() => setTitleId(null)}>
+                  Без титула
+                </Chip>
+                {myTitles.map((t) => (
+                  <button key={t.titleId} type="button" onClick={() => setTitleId(t.titleId)} className={cn('rounded-full p-0.5 ring-offset-2 ring-offset-bg', titleId === t.titleId && 'ring-2 ring-accent')}>
+                    <TitleBadge title={titleMap.get(t.titleId)} className="text-xs" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="px-1 text-sm text-muted">Титулов пока нет — их выдаёт администратор, например за прочтение тайтла целиком.</p>
+            )}
           </div>
         </div>
       </div>

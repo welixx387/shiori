@@ -12,6 +12,7 @@ import { ChapterList } from '../components/novel/ChapterList'
 import { Cover } from '../components/novel/Cover'
 import { NovelCard } from '../components/novel/NovelCard'
 import { ButtonLink } from '../components/ui/Button'
+import { Comments } from '../components/social/Comments'
 import { Tabs } from '../components/ui/Controls'
 import { EmptyState, PageLoader, ProgressRing } from '../components/ui/Feedback'
 import { Container } from '../components/ui/Section'
@@ -113,7 +114,8 @@ function SimilarNovels({ novel }: { novel: Novel }) {
 export default function NovelPage() {
   const { slug } = useParams()
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'chapters' ? 'chapters' : 'about'
+  const rawTab = params.get('tab')
+  const tab = rawTab === 'chapters' || rawTab === 'discussion' ? rawTab : 'about'
   const isAdmin = useIsAdmin()
   const { data: novel, isLoading } = useNovel(slug)
   const { data: chapters = [] } = useChapters(novel?.id, { drafts: isAdmin })
@@ -240,10 +242,13 @@ export default function NovelPage() {
               tabs={[
                 { value: 'about', label: 'О тайтле' },
                 { value: 'chapters', label: 'Главы', count: published.length },
+                { value: 'discussion', label: 'Обсуждение' },
               ]}
             />
             <div className="mt-6">
-              {tab === 'about' ? (
+              {tab === 'discussion' ? (
+                <Comments novelId={novel.id} />
+              ) : tab === 'about' ? (
                 <Reveal>
                   <div className="relative">
                     <div className={expanded || paragraphs.join('').length < 600 ? '' : 'mask-fade-b max-h-60 overflow-hidden'}>

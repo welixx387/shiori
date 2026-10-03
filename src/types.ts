@@ -103,10 +103,15 @@ export interface Profile {
   avatarUrl: string | null
   aura: string
   role: Role
+  /** Титул, который показывается рядом с ником */
+  titleId: string | null
   createdAt: string
 }
 
-export type ProfilePatch = Partial<Pick<Profile, 'username' | 'displayName' | 'bio' | 'avatarUrl' | 'aura'>>
+export type ProfilePatch = Partial<Pick<Profile, 'username' | 'displayName' | 'bio' | 'avatarUrl' | 'aura' | 'titleId'>>
+
+/** Профиль, который видят другие читатели (без email). */
+export type PublicProfile = Omit<Profile, 'email'>
 
 export interface LibraryEntry {
   novelId: string
@@ -165,4 +170,158 @@ export interface AdminUser {
   aura: string
   role: Role
   createdAt: string
+}
+
+// ───────────────────────── Сообщество ─────────────────────────
+
+export type FriendStatus = 'none' | 'outgoing' | 'incoming' | 'friends'
+
+export interface FriendEntry {
+  profile: PublicProfile
+  status: Exclude<FriendStatus, 'none'>
+  since: string
+}
+
+export interface Comment {
+  id: string
+  novelId: string
+  chapterId: string | null
+  parentId: string | null
+  userId: string
+  body: string
+  createdAt: string
+  author: PublicProfile | null
+}
+
+export interface CommentInput {
+  novelId: string
+  chapterId?: string | null
+  parentId?: string | null
+  body: string
+}
+
+export interface Title {
+  id: string
+  name: string
+  description: string
+  tone: string
+  novelId: string | null
+  createdAt: string
+}
+
+export type TitleInput = Pick<Title, 'name' | 'description' | 'tone' | 'novelId'>
+
+export interface UserTitle {
+  userId: string
+  titleId: string
+  grantedAt: string
+}
+
+// ───────────────────────── Карточки и кейсы ─────────────────────────
+
+export type Rarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic'
+
+/** Оформление карточки или кейса без картинки: палитра и иероглиф. */
+export interface ArtStyle {
+  palette: number
+  kanji: string
+}
+
+export interface Card {
+  id: string
+  name: string
+  description: string
+  rarity: Rarity
+  imageUrl: string | null
+  style: ArtStyle
+  novelId: string | null
+  active: boolean
+  createdAt: string
+}
+
+export type CardInput = Omit<Card, 'id' | 'createdAt'>
+
+export interface CaseType {
+  id: string
+  name: string
+  description: string
+  /** 0 — кейс нельзя купить, только получить */
+  price: number
+  currency: string
+  weights: Record<Rarity, number>
+  novelId: string | null
+  weekly: boolean
+  active: boolean
+  imageUrl: string | null
+  style: ArtStyle
+  createdAt: string
+}
+
+export type CaseInput = Omit<CaseType, 'id' | 'createdAt'>
+
+export interface OwnedCase {
+  id: string
+  userId: string
+  caseId: string
+  source: 'weekly' | 'purchase' | 'admin'
+  createdAt: string
+  openedAt: string | null
+  cardId: string | null
+}
+
+export interface OwnedCard {
+  id: string
+  userId: string
+  cardId: string
+  source: 'case' | 'admin' | 'trade'
+  obtainedAt: string
+}
+
+export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled'
+
+export interface Trade {
+  id: string
+  fromUser: string
+  toUser: string
+  /** id экземпляров карточек (OwnedCard), которые отдаёт инициатор */
+  offer: string[]
+  /** id экземпляров карточек, которые инициатор просит взамен */
+  request: string[]
+  message: string
+  status: TradeStatus
+  createdAt: string
+  resolvedAt: string | null
+}
+
+export interface TradeInput {
+  toUser: string
+  offer: string[]
+  request: string[]
+  message?: string
+}
+
+export interface WeeklyStatus {
+  /** Кейс, который выдаётся бесплатно; null — администратор его не настроил */
+  caseId: string | null
+  /** Когда можно забрать следующий; null — уже можно */
+  availableAt: string | null
+}
+
+export interface Purchase {
+  id: string
+  caseId: string | null
+  quantity: number
+  amount: number
+  currency: string
+  payUrl: string | null
+  status: 'active' | 'credited' | 'expired' | 'failed'
+  createdAt: string
+  creditedAt: string | null
+}
+
+export interface ReadingSummary {
+  novelId: string
+  chaptersRead: number
+  chaptersTotal: number
+  lastReadAt: string | null
 }

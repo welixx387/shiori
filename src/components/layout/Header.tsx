@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Bookmark,
   Compass,
+  Gem,
   House,
   LayoutDashboard,
   Library,
@@ -13,11 +14,13 @@ import {
   Shield,
   Sun,
   UserRound,
+  Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
+import { useSocialBadges } from '../../lib/queries'
 import { useAuth } from '../../store/auth'
 import { resolveTheme, usePrefs } from '../../store/prefs'
 import { toast } from '../../store/toast'
@@ -28,11 +31,24 @@ import { Kbd } from '../ui/Feedback'
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu'
 import { Logo } from './Logo'
 
-const NAV = [
+type NavItem = { to: string; label: string; icon: typeof House; end?: boolean; auth?: boolean; badge?: 'people' | 'cases' }
+
+const NAV: NavItem[] = [
   { to: '/', label: 'Главная', icon: House, end: true },
   { to: '/catalog', label: 'Каталог', icon: Compass },
   { to: '/profile/library', label: 'Библиотека', icon: Library, auth: true },
+  { to: '/cases', label: 'Кейсы', icon: Gem, badge: 'cases' },
+  { to: '/people', label: 'Люди', icon: Users, badge: 'people' },
 ]
+
+function Dot({ count }: { count: number }) {
+  if (!count) return null
+  return (
+    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9.5px] font-bold leading-none text-white">
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
 
 export function ThemeToggle({ className }: { className?: string }) {
   const theme = usePrefs((s) => s.theme)
@@ -106,6 +122,12 @@ function UserMenu() {
           <MenuItem icon={<UserRound className="h-4 w-4" />} onClick={() => go('/profile', close)}>
             Личный кабинет
           </MenuItem>
+          <MenuItem icon={<Users className="h-4 w-4" />} onClick={() => go(`/u/${encodeURIComponent(user.username)}`, close)}>
+            Мой публичный профиль
+          </MenuItem>
+          <MenuItem icon={<Gem className="h-4 w-4" />} onClick={() => go('/cases?tab=collection', close)}>
+            Коллекция карточек
+          </MenuItem>
           <MenuItem icon={<Library className="h-4 w-4" />} onClick={() => go('/profile/library', close)}>
             Библиотека
           </MenuItem>
@@ -165,8 +187,11 @@ export function Header() {
 
   useEffect(() => setHidden(false), [location.pathname])
 
+  const badges = useSocialBadges()
   const nav = NAV.filter((n) => !n.auth || user)
   if (user?.role === 'admin') nav.push({ to: '/admin', label: 'Админка', icon: Shield })
+  const badgeFor = (item: NavItem) =>
+    item.badge === 'people' ? badges.requests : item.badge === 'cases' ? badges.trades + badges.cases : 0
 
   return (
     <motion.header
@@ -190,7 +215,7 @@ export function Header() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'relative rounded-full px-4 py-2 text-sm font-medium transition-colors duration-200',
+                  'relative rounded-full px-3.5 py-2 text-sm font-medium transition-colors duration-200',
                   isActive ? 'text-fg' : 'text-muted hover:text-fg'
                 )
               }
@@ -205,6 +230,7 @@ export function Header() {
                     />
                   )}
                   <span className="relative">{item.label}</span>
+                  <Dot count={badgeFor(item)} />
                 </>
               )}
             </NavLink>
@@ -214,13 +240,13 @@ export function Header() {
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={openPalette}
-            className="group hidden h-10 w-64 items-center gap-2.5 rounded-full border border-line/10 bg-line/[0.04] pl-4 pr-2 text-left text-sm text-faint transition-all duration-300 hover:border-line/20 hover:bg-line/[0.07] lg:flex xl:w-72"
+            className="group hidden h-10 w-60 items-center gap-2.5 rounded-full border border-line/10 bg-line/[0.04] pl-4 pr-2 text-left text-sm text-faint transition-all duration-300 hover:border-line/20 hover:bg-line/[0.07] xl:flex"
           >
             <Search className="h-4 w-4 transition-colors group-hover:text-accent" />
             <span className="flex-1 truncate">Тайтл, автор, жанр…</span>
             <Kbd>Ctrl K</Kbd>
           </button>
-          <IconButton label="Поиск" className="lg:hidden" onClick={openPalette}>
+          <IconButton label="Поиск" className="xl:hidden" onClick={openPalette}>
             <Search className="h-[18px] w-[18px]" />
           </IconButton>
           <ThemeToggle className="max-sm:hidden" />
@@ -248,15 +274,16 @@ export function MobileNav() {
   const user = useAuth((s) => s.user)
   const openPalette = useUI((s) => s.openPalette)
   const location = useLocation()
+  const badges = useSocialBadges()
   const items = [
-    { to: '/', label: 'Главная', icon: House },
-    { to: '/catalog', label: 'Каталог', icon: Compass },
-    { to: '#search', label: 'Поиск', icon: Search },
-    { to: user ? '/profile/library' : '/login', label: 'Полка', icon: Library },
-    { to: user ? '/profile' : '/login', label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn },
+    { to: '/', label: 'Главная', icon: House, badge: 0 },
+    { to: '/catalog', label: 'Каталог', icon: Compass, badge: 0 },
+    { to: '/cases', label: 'Кейсы', icon: Gem, badge: badges.cases + badges.trades },
+    { to: '/people', label: 'Люди', icon: Users, badge: badges.requests },
+    { to: user ? '/profile' : '/login', label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn, badge: 0 },
   ]
   const activeIndex = items.findIndex((i) =>
-    i.to === '/' ? location.pathname === '/' : i.to !== '#search' && location.pathname.startsWith(i.to) && !(i.to === '/profile' && location.pathname.startsWith('/profile/library'))
+    i.to === '/' ? location.pathname === '/' : i.to !== '#search' && location.pathname.startsWith(i.to)
   )
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 px-3 pb-safe md:hidden">
@@ -274,7 +301,10 @@ export function MobileNav() {
                   transition={{ type: 'spring', stiffness: 500, damping: 38 }}
                 />
               )}
-              <Icon className={cn('relative h-5 w-5 transition-colors', active ? 'text-accent' : 'text-muted')} />
+              <span className="relative">
+                <Icon className={cn('h-5 w-5 transition-colors', active ? 'text-accent' : 'text-muted')} />
+                <Dot count={item.badge} />
+              </span>
               <span className={cn('relative text-[10.5px] font-medium', active ? 'text-fg' : 'text-muted')}>{item.label}</span>
             </>
           )

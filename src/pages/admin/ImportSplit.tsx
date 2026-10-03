@@ -37,7 +37,8 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
   const qc = useQueryClient()
   const { data: chapters = [] } = useChapters(novel.id, { drafts: true })
   const [text, setText] = useState('')
-  const [fb2, setFb2] = useState<SplitPart[] | null>(null)
+  const [structured, setStructured] = useState<SplitPart[] | null>(null)
+  const [fullText, setFullText] = useState('')
   const [fileName, setFileName] = useState('')
   const [mode, setMode] = useState<SplitMode>('headings')
   const [pattern, setPattern] = useState(HEADING_PATTERN)
@@ -68,10 +69,10 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
   }, [mode, pattern])
 
   const parts = useMemo(() => {
-    if (fb2) return fb2
+    if (structured) return structured
     if (!text.trim() || patternError) return []
     return splitIntoChapters(text, { mode, pattern, wordsPerChapter: wordsPer })
-  }, [fb2, text, mode, pattern, wordsPer, patternError])
+  }, [structured, text, mode, pattern, wordsPer, patternError])
 
   useEffect(() => {
     setRows(parts.map((p) => ({ ...p, include: p.words > 0, open: false })))
@@ -84,14 +85,36 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
   const loadFile = async (file: File) => {
     try {
       setFileName(file.name)
-      if (/\.fb2$/i.test(file.name)) {
+      const name = file.name.toLowerCase()
+      if (name.endsWith('.fb2')) {
         const xml = await readTextFile(file)
         const parsed = parseFb2(xml)
-        setFb2(parsed.parts)
+        setStructured(parsed.parts)
+        setFullText(parsed.parts.map((p) => `${p.title}\n\n${p.content}`).join('\n\n'))
         setText('')
         toast.success('FB2 прочитан', `${parsed.title || file.name}: разделов — ${parsed.parts.length}`)
+      } else if (/\.(epub|docx|html?)$/.test(name)) {
+        const { parseDocx, parseEpub, parseHtml } = await import('../../lib/books')
+        const book = name.endsWith('.epub')
+          ? parseEpub(await file.arrayBuffer())
+          : name.endsWith('.docx')
+            ? parseDocx(await file.arrayBuffer())
+            : parseHtml(await readTextFile(file))
+        setFullText(book.text)
+        if (book.parts.length > 1) {
+          setStructured(book.parts)
+          setText('')
+          toast.success('Файл прочитан', `${book.title || file.name}: глав по структуре файла — ${book.parts.length}`)
+        } else {
+          setStructured(null)
+          setText(book.text)
+          toast.success('Файл прочитан', 'Разделов не нашлось — выберите ниже, как делить текст')
+        }
+      } else if (/\.(doc|pdf|rtf|mobi|azw3?)$/.test(name)) {
+        throw new Error('Этот формат не читается в браузере. Сохраните книгу как EPUB, FB2, DOCX или TXT')
       } else {
-        setFb2(null)
+        setStructured(null)
+        setFullText('')
         setText(await readTextFile(file))
       }
     } catch (e) {
@@ -120,7 +143,7 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
       await Promise.all([invalidateCatalog(qc), qc.invalidateQueries({ queryKey: qk.chapters(novel.id, true) })])
       toast.success(`Добавлено ${inputs.length} ${plural(inputs.length, ['глава', 'главы', 'глав'])}`, publish ? 'Читатели уже видят их' : 'Сохранены как черновики')
       setText('')
-      setFb2(null)
+      setStructured(null)
       setFileName('')
       onDone()
     } catch (e) {
@@ -139,10 +162,10 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-base font-semibold">Текст для разбивки</h2>
-              <p className="mt-0.5 text-sm text-muted">Вставьте целый том или загрузите файл .txt, .md, .fb2</p>
+              <p className="mt-0.5 text-sm text-muted">Вставьте целый том или загрузите файл: EPUB, FB2, DOCX, TXT, MD или HTML</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="ghost" icon={<Wand className="h-4 w-4" />} onClick={() => { setFb2(null); setText(SAMPLE) }}>
+              <Button size="sm" variant="ghost" icon={<Wand className="h-4 w-4" />} onClick={() => { setStructured(null); setText(SAMPLE) }}>
                 Пример
               </Button>
               <Button size="sm" variant="secondary" icon={<FileUp className="h-4 w-4" />} onClick={() => fileRef.current?.click()}>
@@ -151,7 +174,7 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
               <input
                 ref={fileRef}
                 type="file"
-                accept=".txt,.md,.fb2,text/plain"
+                accept=".txt,.md,.fb2,.epub,.docx,.html,.htm,text/plain,application/epub+zip"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
@@ -161,14 +184,21 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
               />
             </div>
           </div>
-          {fb2 ? (
+          {structured ? (
             <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl bg-accent-3/10 p-4 text-sm">
               <span>
-                <span className="font-semibold">{fileName}</span> — разделы FB2 станут главами
+                <span className="font-semibold">{fileName}</span> — разделы файла станут главами
               </span>
-              <Button size="sm" variant="ghost" onClick={() => { setFb2(null); setFileName('') }}>
-                Сбросить
-              </Button>
+              <span className="flex shrink-0 gap-1">
+                {fullText && (
+                  <Button size="sm" variant="ghost" onClick={() => { setStructured(null); setText(fullText) }}>
+                    Разбить по-своему
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => { setStructured(null); setFileName(''); setFullText('') }}>
+                  Сбросить
+                </Button>
+              </span>
             </div>
           ) : (
             <textarea
@@ -189,7 +219,7 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
               className={cn('field mt-5 min-h-[320px] resize-y font-serif text-[15px] leading-relaxed', drag && 'border-accent bg-accent/5')}
             />
           )}
-          {text && !fb2 && (
+          {text && !structured && (
             <p className="mt-2 px-1 text-xs text-faint">
               {formatNumber(text.length)} символов{fileName ? ` · ${fileName}` : ''}
             </p>
@@ -198,7 +228,7 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
 
         <section className="space-y-5 rounded-[32px] border border-line/[0.08] bg-surface/50 p-5 sm:p-7">
           <h2 className="font-display text-base font-semibold">Как делить</h2>
-          {!fb2 && (
+          {!structured && (
             <>
               <Segmented
                 className="flex-wrap"

@@ -386,6 +386,12 @@ function NovelForm({ novel }: { novel?: Novel }) {
             </ButtonLink>
           )}
         </div>
+        {!novel && (
+          <p className="mt-3 rounded-2xl bg-line/[0.04] px-4 py-3 text-xs leading-relaxed text-muted">
+            Текст глав загружается после создания: откроется вкладка «Главы», а в «Импорт и разбивка» можно загрузить книгу целиком —
+            EPUB, FB2, DOCX, TXT или HTML. Она сама разделится на главы.
+          </p>
+        )}
         <AnimatePresence>
           {dirty && (
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-3 text-center text-xs text-warn">

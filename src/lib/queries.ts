@@ -262,3 +262,162 @@ export function useBookmarks() {
   })
   return { add, remove, edit }
 }
+
+// ───────────────────────── Сообщество и коллекции ─────────────────────────
+
+export const sk = {
+  people: (q: string) => ['people', q] as const,
+  profile: (username: string) => ['profile', username.toLowerCase()] as const,
+  profileId: (id: string) => ['profile-id', id] as const,
+  friends: (uid?: string) => ['friends', uid ?? 'guest'] as const,
+  comments: (novelId: string, chapterId: string | null) => ['comments', novelId, chapterId ?? 'novel'] as const,
+  titles: ['titles'] as const,
+  userTitles: (uid: string) => ['user-titles', uid] as const,
+  cards: ['cards'] as const,
+  cases: ['cases'] as const,
+  userCards: (uid: string) => ['user-cards', uid] as const,
+  myCases: (uid?: string) => ['my-cases', uid ?? 'guest'] as const,
+  casesOf: (uid: string) => ['cases-of', uid] as const,
+  weekly: (uid?: string) => ['weekly', uid ?? 'guest'] as const,
+  trades: (uid?: string) => ['trades', uid ?? 'guest'] as const,
+  purchases: (uid?: string) => ['purchases', uid ?? 'guest'] as const,
+  reading: (uid: string) => ['reading', uid] as const,
+}
+
+/** Обновить всё, что связано с коллекциями (после открытия кейса, обмена, выдачи). */
+export function invalidateCollections(qc: QC = queryClient) {
+  return Promise.all(
+    ['user-cards', 'my-cases', 'cases-of', 'weekly', 'trades', 'purchases', 'cards', 'cases'].map((k) =>
+      qc.invalidateQueries({ queryKey: [k] })
+    )
+  )
+}
+
+export function invalidateSocial(qc: QC = queryClient) {
+  return Promise.all(
+    ['friends', 'people', 'profile', 'profile-id', 'user-titles', 'titles', 'admin-users'].map((k) =>
+      qc.invalidateQueries({ queryKey: [k] })
+    )
+  )
+}
+
+export function useSearchUsers(query: string) {
+  const q = query.trim()
+  return useQuery({ queryKey: sk.people(q), queryFn: () => api.searchUsers(q), enabled: q.length > 0, staleTime: 15_000 })
+}
+
+export function usePublicProfile(username: string | undefined) {
+  return useQuery({
+    queryKey: sk.profile(username ?? ''),
+    queryFn: () => api.getPublicProfile(username!),
+    enabled: Boolean(username),
+  })
+}
+
+export function useProfileById(id: string | undefined) {
+  return useQuery({ queryKey: sk.profileId(id ?? ''), queryFn: () => api.getProfileById(id!), enabled: Boolean(id) })
+}
+
+export function useFriends() {
+  const user = useUser()
+  const query = useQuery({ queryKey: sk.friends(user?.id), queryFn: () => api.listFriends(), enabled: Boolean(user) })
+  return { ...query, data: user ? (query.data ?? []) : [] }
+}
+
+export function useComments(novelId: string | undefined, chapterId: string | null) {
+  return useQuery({
+    queryKey: sk.comments(novelId ?? '', chapterId),
+    queryFn: () => api.listComments(novelId!, chapterId),
+    enabled: Boolean(novelId),
+    staleTime: 15_000,
+  })
+}
+
+export function useTitles() {
+  return useQuery({ queryKey: sk.titles, queryFn: () => api.listTitles(), staleTime: 5 * 60_000 })
+}
+
+/** Карта id → титул */
+export function useTitleMap() {
+  const { data } = useTitles()
+  return useMemo(() => new Map((data ?? []).map((t) => [t.id, t])), [data])
+}
+
+export function useUserTitles(userId: string | undefined) {
+  return useQuery({
+    queryKey: sk.userTitles(userId ?? ''),
+    queryFn: () => api.listUserTitles(userId!),
+    enabled: Boolean(userId),
+  })
+}
+
+export function useCards() {
+  return useQuery({ queryKey: sk.cards, queryFn: () => api.listCards(), staleTime: 5 * 60_000 })
+}
+
+export function useCardMap() {
+  const { data } = useCards()
+  return useMemo(() => new Map((data ?? []).map((c) => [c.id, c])), [data])
+}
+
+export function useCases() {
+  return useQuery({ queryKey: sk.cases, queryFn: () => api.listCases(), staleTime: 5 * 60_000 })
+}
+
+export function useUserCards(userId: string | undefined) {
+  return useQuery({
+    queryKey: sk.userCards(userId ?? ''),
+    queryFn: () => api.listUserCards(userId!),
+    enabled: Boolean(userId),
+  })
+}
+
+export function useMyCases() {
+  const user = useUser()
+  const query = useQuery({ queryKey: sk.myCases(user?.id), queryFn: () => api.listMyCases(), enabled: Boolean(user) })
+  return { ...query, data: user ? (query.data ?? []) : [] }
+}
+
+export function useCasesOf(userId: string | undefined) {
+  return useQuery({ queryKey: sk.casesOf(userId ?? ''), queryFn: () => api.listCasesOf(userId!), enabled: Boolean(userId) })
+}
+
+export function useWeekly() {
+  const user = useUser()
+  return useQuery({ queryKey: sk.weekly(user?.id), queryFn: () => api.weeklyStatus(), staleTime: 30_000 })
+}
+
+export function useTrades() {
+  const user = useUser()
+  const query = useQuery({ queryKey: sk.trades(user?.id), queryFn: () => api.listTrades(), enabled: Boolean(user) })
+  return { ...query, data: user ? (query.data ?? []) : [] }
+}
+
+export function usePurchases() {
+  const user = useUser()
+  return useQuery({
+    queryKey: sk.purchases(user?.id),
+    queryFn: () => api.listPurchases(),
+    enabled: Boolean(user) && api.paymentsEnabled,
+  })
+}
+
+export function useUserReading(userId: string | undefined) {
+  return useQuery({ queryKey: sk.reading(userId ?? ''), queryFn: () => api.userReading(userId!), enabled: Boolean(userId) })
+}
+
+/** Счётчики для значков в меню: заявки в друзья, предложения обмена, закрытые кейсы. */
+export function useSocialBadges() {
+  const { data: friends } = useFriends()
+  const { data: trades } = useTrades()
+  const { data: cases } = useMyCases()
+  const user = useUser()
+  return useMemo(
+    () => ({
+      requests: friends.filter((f) => f.status === 'incoming').length,
+      trades: trades.filter((t) => t.status === 'pending' && t.toUser === user?.id).length,
+      cases: cases.filter((c) => !c.openedAt).length,
+    }),
+    [friends, trades, cases, user?.id]
+  )
+}

@@ -21,6 +21,9 @@ const routes: RouteObject[] = [
           { path: 'login', lazy: page(() => import('./pages/Auth')) },
           { path: 'register', lazy: page(() => import('./pages/Auth')) },
           { path: 'reset-password', lazy: page(() => import('./pages/ResetPassword')) },
+          { path: 'people', lazy: page(() => import('./pages/People')) },
+          { path: 'u/:username', lazy: page(() => import('./pages/UserProfile')) },
+          { path: 'cases', lazy: page(() => import('./pages/Cases')) },
           {
             path: 'profile/:tab?',
             lazy: async () => {

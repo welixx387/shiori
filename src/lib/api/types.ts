@@ -2,18 +2,37 @@ import type {
   AdminUser,
   Bookmark,
   BookmarkInput,
+  Card,
+  CardInput,
+  CaseInput,
+  CaseType,
   Chapter,
   ChapterInput,
   ChapterMeta,
   ChapterRead,
+  Comment,
+  CommentInput,
+  FriendEntry,
+  FriendStatus,
   LibraryEntry,
   Novel,
   NovelInput,
+  OwnedCard,
+  OwnedCase,
   Profile,
   ProfilePatch,
+  PublicProfile,
+  Purchase,
+  ReadingSummary,
   Role,
   Shelf,
+  Title,
+  TitleInput,
+  Trade,
+  TradeInput,
   UserData,
+  UserTitle,
+  WeeklyStatus,
 } from '../../types'
 
 export class ApiError extends Error {
@@ -37,6 +56,8 @@ export interface SignUpResult {
   /** Сервер требует подтвердить email — пользователь войдёт после перехода по ссылке */
   needsConfirmation: boolean
 }
+
+export type ImageKind = 'cover' | 'avatar' | 'card' | 'case'
 
 export interface ListOptions {
   includeDrafts?: boolean
@@ -64,7 +85,7 @@ export interface Api {
   /** Новый пароль после перехода по ссылке из письма */
   setNewPassword(password: string): Promise<void>
   isUsernameTaken(username: string): Promise<boolean>
-  uploadImage(kind: 'cover' | 'avatar', file: Blob): Promise<string>
+  uploadImage(kind: ImageKind, file: Blob): Promise<string>
   deleteAccount(): Promise<void>
   /** Данные изменились в другой вкладке (только локальный режим) */
   onExternalChange?(cb: () => void): () => void
@@ -102,4 +123,68 @@ export interface Api {
   updateBookmark(id: string, note: string): Promise<void>
   removeBookmark(id: string): Promise<void>
   clearHistory(): Promise<void>
+
+  // ── Читатели и друзья ──
+  searchUsers(query: string): Promise<PublicProfile[]>
+  getPublicProfile(username: string): Promise<PublicProfile | null>
+  getProfileById(id: string): Promise<PublicProfile | null>
+  /** Мои друзья, входящие и исходящие заявки */
+  listFriends(): Promise<FriendEntry[]>
+  sendFriendRequest(userId: string): Promise<FriendStatus>
+  respondFriendRequest(userId: string, accept: boolean): Promise<void>
+  /** Удалить из друзей, отменить свою заявку или отклонить чужую */
+  removeFriend(userId: string): Promise<void>
+
+  // ── Комментарии ──
+  /** chapterId = null — обсуждение тайтла, иначе — комментарии к главе */
+  listComments(novelId: string, chapterId: string | null): Promise<Comment[]>
+  addComment(input: CommentInput): Promise<Comment>
+  deleteComment(id: string): Promise<void>
+
+  // ── Титулы ──
+  listTitles(): Promise<Title[]>
+  listUserTitles(userId: string): Promise<UserTitle[]>
+  saveTitle(input: TitleInput, id?: string): Promise<Title>
+  deleteTitle(id: string): Promise<void>
+  grantTitle(userId: string, titleId: string): Promise<void>
+  revokeTitle(userId: string, titleId: string): Promise<void>
+
+  // ── Карточки и кейсы ──
+  listCards(): Promise<Card[]>
+  saveCard(input: CardInput, id?: string): Promise<Card>
+  deleteCard(id: string): Promise<void>
+  /** Активные кейсы; администратор видит и выключенные */
+  listCases(): Promise<CaseType[]>
+  saveCase(input: CaseInput, id?: string): Promise<CaseType>
+  deleteCase(id: string): Promise<void>
+  /** Коллекция любого читателя — она открыта всем */
+  listUserCards(userId: string): Promise<OwnedCard[]>
+  /** Экземпляры карточек по id — для показа обменов */
+  getOwnedCards(ids: string[]): Promise<OwnedCard[]>
+  /** Мои кейсы: закрытые и история открытых */
+  listMyCases(): Promise<OwnedCase[]>
+  weeklyStatus(): Promise<WeeklyStatus>
+  claimWeeklyCase(): Promise<OwnedCase>
+  openCase(ownedCaseId: string): Promise<OwnedCard>
+
+  // ── Обмены ──
+  listTrades(): Promise<Trade[]>
+  createTrade(input: TradeInput): Promise<Trade>
+  respondTrade(id: string, accept: boolean): Promise<void>
+  cancelTrade(id: string): Promise<void>
+
+  // ── Покупка кейсов (@CryptoBot, только облачный режим) ──
+  readonly paymentsEnabled: boolean
+  buyCase(caseId: string, quantity: number): Promise<{ purchaseId: string; payUrl: string }>
+  /** Проверить неоплаченные счета и зачислить оплаченные; возвращает число новых кейсов */
+  checkPurchases(): Promise<number>
+  listPurchases(): Promise<Purchase[]>
+
+  // ── Админка: читатели ──
+  adminUpdateProfile(userId: string, patch: ProfilePatch): Promise<PublicProfile>
+  userReading(userId: string): Promise<ReadingSummary[]>
+  listCasesOf(userId: string): Promise<OwnedCase[]>
+  grantCase(userId: string, caseId: string, quantity: number): Promise<void>
+  grantCard(userId: string, cardId: string): Promise<void>
+  removeUserCard(ownedCardId: string): Promise<void>
 }
