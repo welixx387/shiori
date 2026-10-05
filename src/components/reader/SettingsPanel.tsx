@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { BookOpen, Columns2, RotateCcw, ScrollText } from 'lucide-react'
+import { BookOpen, Columns2, GalleryHorizontal, RotateCcw, ScrollText, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '../../lib/cn'
 import { READER_FONTS, READER_THEMES, ensureReaderFont, useReaderSettings } from '../../store/reader'
@@ -78,8 +78,33 @@ export function SettingsPanel() {
           ]}
         />
         <p className="mt-2 px-1 text-xs text-muted">
-          {s.mode === 'paged' ? 'Листайте касанием левого и правого края, свайпом или стрелками.' : 'Прокручивайте текст как обычную страницу.'}
+          {s.mode === 'paged'
+            ? 'Листайте свайпом, касанием левого или правого края страницы, колесом мыши или стрелками.'
+            : 'Прокручивайте текст как обычную страницу.'}
         </p>
+        {s.mode === 'paged' && (
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className="mb-2 px-1 text-xs font-semibold text-fg-2">Анимация листания</p>
+              <Segmented
+                className="w-full"
+                value={s.turn}
+                onChange={(turn) => s.set({ turn })}
+                options={[
+                  { value: 'flip', label: 'Книга', icon: <BookOpen className="h-4 w-4" /> },
+                  { value: 'slide', label: 'Сдвиг', icon: <GalleryHorizontal className="h-4 w-4" /> },
+                  { value: 'none', label: 'Без', icon: <Square className="h-3.5 w-3.5" /> },
+                ]}
+              />
+            </div>
+            <Switch
+              label="Разворот из двух страниц"
+              description="На широком экране и на телефоне, повёрнутом горизонтально"
+              checked={s.spread === 'auto'}
+              onChange={(on) => s.set({ spread: on ? 'auto' : 'single' })}
+            />
+          </div>
+        )}
       </section>
 
       <section>
@@ -149,7 +174,9 @@ export function SettingsPanel() {
           Горячие клавиши
         </p>
         <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted">
-          <li>← → — главы / страницы</li>
+          <li>← → — страницы / главы</li>
+          <li>Пробел — дальше</li>
+          <li>M — лента или страницы</li>
           <li>C — оглавление</li>
           <li>S — настройки</li>
           <li>B — закладка</li>

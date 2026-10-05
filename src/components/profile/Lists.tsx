@@ -171,7 +171,7 @@ export function BookmarksTab() {
           options={[{ value: '', label: 'Все тайтлы' }, ...novelIds.map((id) => ({ value: id, label: novels.get(id)!.title }))]}
         />
       )}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <AnimatePresence initial={false}>
           {shown.map((b) => {
             const novel = novels.get(b.novelId)!
@@ -204,7 +204,7 @@ export function BookmarksTab() {
                       {ch ? chapterLabel(ch) : 'Глава'} · {timeAgo(b.createdAt)}
                     </p>
                   </div>
-                  <ButtonLink to={`/read/${novel.slug}/${b.chapterId}?p=${b.paragraph}`} size="sm" variant="secondary" iconRight={<ArrowUpRight className="h-4 w-4" />}>
+                  <ButtonLink to={`/read/${novel.slug}/${b.chapterId}?p=${b.paragraph}${b.charOffset ? `&c=${b.charOffset}` : ''}`} size="sm" variant="secondary" iconRight={<ArrowUpRight className="h-4 w-4" />}>
                     К месту
                   </ButtonLink>
                   <IconButton label="Удалить закладку" size="sm" onClick={() => remove.mutate(b.id)}>

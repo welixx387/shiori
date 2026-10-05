@@ -1,26 +1,31 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   BookmarkPlus,
   ChevronLeft,
   ChevronRight,
   Headphones,
   List,
   Maximize2,
+  MessageCircle,
   Minimize2,
   Pause,
   PenLine,
   Play,
+  ScrollText,
   SkipBack,
   SkipForward,
   Square,
   Type,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { anchorToPosition, blockEl, excerptAt, flashBlock, positionToAnchor, scrollAnchor, scrollToAnchor, type Anchor } from '../components/reader/anchor'
 import { ChapterContent } from '../components/reader/ChapterContent'
+import { PagedBook, type PagedHandle, type PagedState } from '../components/reader/PagedBook'
 import { SettingsPanel } from '../components/reader/SettingsPanel'
 import { useTts } from '../components/reader/useTts'
 import { ChapterList } from '../components/novel/ChapterList'
@@ -35,15 +40,16 @@ import { safeSession } from '../lib/kv'
 import { cn } from '../lib/cn'
 import { chapterLabel, formatNumber, plural, readingMinutes } from '../lib/format'
 import { qk, useBookmarks, useChapter, useChapters, useMarkRead, useNovel, useProgressFor, useReadSet, useSaveProgress } from '../lib/queries'
-import { parseContent, plainText } from '../lib/text'
+import { parseContent } from '../lib/text'
 import { useIsAdmin, useUser } from '../store/auth'
 import { usePositions } from '../store/guest'
+import { usePrefs } from '../store/prefs'
 import { READER_FONTS, READER_THEMES, ensureReaderFont, useReaderSettings } from '../store/reader'
 import { toast } from '../store/toast'
 import type { Chapter, ChapterMeta, Novel } from '../types'
 
-const PAGE_GAP = 56
 const TTS_CONTINUE = 'shiori-tts-continue'
+const noop = () => undefined
 
 function RIcon({ label, onClick, active, children, className }: { label: string; onClick?: () => void; active?: boolean; children: ReactNode; className?: string }) {
   return (
@@ -83,7 +89,17 @@ function ChapterHeader({ novel, chapter }: { novel: Novel; chapter: Chapter }) {
   )
 }
 
-function ChapterEnd({ novel, next, endRef }: { novel: Novel; next: ChapterMeta | null; endRef: React.RefObject<HTMLDivElement> }) {
+function ChapterEnd({
+  novel,
+  next,
+  endRef,
+  onComments,
+}: {
+  novel: Novel
+  next: ChapterMeta | null
+  endRef?: React.RefObject<HTMLDivElement>
+  onComments?: () => void
+}) {
   return (
     <footer className="mt-14 text-center text-base leading-normal" style={{ fontSize: 16, breakInside: 'avoid' }}>
       <div ref={endRef} className="r-break" aria-hidden>
@@ -93,7 +109,7 @@ function ChapterEnd({ novel, next, endRef }: { novel: Novel; next: ChapterMeta |
       {next ? (
         <Link
           to={`/read/${novel.slug}/${next.id}`}
-          className="group mx-auto mt-8 block max-w-md rounded-[28px] border border-reader-line/10 bg-reader-surface p-6 text-left transition-colors hover:border-reader-accent/40"
+          className="group mx-auto mt-8 block max-w-md rounded-[28px] border border-reader-line/10 bg-reader-bg/40 p-6 text-left transition-colors hover:border-reader-accent/40"
         >
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-reader-muted">Следующая глава</p>
           <p className="mt-2 font-display text-lg font-semibold leading-snug">{next.title || chapterLabel(next)}</p>
@@ -105,7 +121,7 @@ function ChapterEnd({ novel, next, endRef }: { novel: Novel; next: ChapterMeta |
           </span>
         </Link>
       ) : (
-        <div className="mx-auto mt-8 max-w-md rounded-[28px] border border-reader-line/10 bg-reader-surface p-6">
+        <div className="mx-auto mt-8 max-w-md rounded-[28px] border border-reader-line/10 bg-reader-bg/40 p-6">
           <p className="font-display text-lg font-semibold">Вы догнали автора!</p>
           <p className="mt-2 text-sm text-reader-muted">
             Это последняя опубликованная глава. Добавьте тайтл в библиотеку и оцените его — так вы не пропустите продолжение.
@@ -118,6 +134,15 @@ function ChapterEnd({ novel, next, endRef }: { novel: Novel; next: ChapterMeta |
           </Link>
         </div>
       )}
+      {onComments && (
+        <button
+          type="button"
+          onClick={onComments}
+          className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-reader-line/15 px-5 py-2.5 text-sm font-semibold text-reader-fg/80 transition-colors hover:border-reader-accent/50 hover:text-reader-accent"
+        >
+          <MessageCircle className="h-4 w-4" /> Обсуждение главы
+        </button>
+      )}
     </footer>
   )
 }
@@ -125,11 +150,14 @@ function ChapterEnd({ novel, next, endRef }: { novel: Novel; next: ChapterMeta |
 export default function Reader() {
   const { slug, chapterId } = useParams()
   const navigate = useNavigate()
-  const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const [params] = useSearchParams()
   const qc = useQueryClient()
   const user = useUser()
   const isAdmin = useIsAdmin()
   const s = useReaderSettings()
+  const reduceMotionPref = usePrefs((st) => st.reduceMotion)
+  const reduceMotionOs = useReducedMotion()
   const { data: novel, isLoading: novelLoading } = useNovel(slug)
   const { data: chapters = [] } = useChapters(novel?.id, { drafts: isAdmin })
   const { data: chapter, isLoading: chapterLoading } = useChapter(chapterId)
@@ -142,24 +170,28 @@ export default function Reader() {
   const setGuest = usePositions((st) => st.setGuest)
 
   const [uiVisible, setUiVisible] = useState(true)
-  const [panel, setPanel] = useState<null | 'chapters' | 'settings'>(null)
+  const [panel, setPanel] = useState<null | 'chapters' | 'settings' | 'comments'>(null)
   const [progress, setProgress] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null)
-  const [page, setPage] = useState(0)
-  const [pages, setPages] = useState(1)
-  const [pageWidth, setPageWidth] = useState(0)
+  const [pageInfo, setPageInfo] = useState({ page: 0, pages: 1, perView: 1 })
 
+  const pagedRef = useRef<PagedHandle>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const flowRef = useRef<HTMLDivElement | null>(null)
+  const headerRef = useRef<HTMLElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const restored = useRef<string | null>(null)
   const markedRef = useRef<string | null>(null)
-  const progressRef = useRef(0)
-  progressRef.current = progress
+  /** Где читатель сейчас: абзац и символ. Общий для обоих режимов — переживает смену режима, шрифта и поворот экрана. */
+  const anchorRef = useRef<Anchor | null>(null)
+  const pending = useRef<{ chapterId: string; novelId: string; position: number } | null>(null)
+  const saveTimer = useRef(0)
+  const suppressScroll = useRef(0)
+  const pageInfoRef = useRef(pageInfo)
+  pageInfoRef.current = pageInfo
 
   const paged = s.mode === 'paged'
+  const turnStyle = reduceMotionPref || reduceMotionOs ? 'none' : s.turn
   const ordered = useMemo(() => [...chapters].sort((a, b) => a.volume - b.volume || a.number - b.number), [chapters])
   const index = ordered.findIndex((c) => c.id === chapterId)
   const prev = index > 0 ? ordered[index - 1] : null
@@ -167,6 +199,10 @@ export default function Reader() {
   const blocks = useMemo(() => (chapter ? parseContent(chapter.content) : []), [chapter])
   const theme = READER_THEMES.find((t) => t.id === s.theme) ?? READER_THEMES[4]
   const font = READER_FONTS.find((f) => f.id === s.font) ?? READER_FONTS[0]
+  const layoutKey = [s.font, s.fontSize, s.lineHeight, s.paragraphGap, s.width, s.indent, s.justify, s.hyphens].join('|')
+
+  const latest = useRef({ chapter, novel, user, blocks, paged, next, prev })
+  latest.current = { chapter, novel, user, blocks, paged, next, prev }
 
   useTitle(chapter && novel ? `${chapter.title || chapterLabel(chapter)} — ${novel.title}` : novel?.title)
   useEffect(() => ensureReaderFont(s.font), [s.font])
@@ -181,69 +217,136 @@ export default function Reader() {
     }
   }, [theme.bg])
 
-  const goTo = useCallback((c: ChapterMeta | null) => c && novel && navigate(`/read/${novel.slug}/${c.id}`), [navigate, novel])
+  // В режиме страниц страница не «тянется» и не обновляется жестом вниз.
+  useEffect(() => {
+    if (!paged) return
+    const html = document.documentElement
+    const before = html.style.overscrollBehavior
+    html.style.overscrollBehavior = 'none'
+    return () => {
+      html.style.overscrollBehavior = before
+    }
+  }, [paged])
+
+  const goTo = useCallback(
+    (c: ChapterMeta | null, opts?: { atEnd?: boolean }) => {
+      const n = latest.current.novel
+      if (c && n) navigate(`/read/${n.slug}/${c.id}`, opts?.atEnd ? { state: { at: 'end' } } : undefined)
+    },
+    [navigate]
+  )
+
+  /** Корень с текстом главы в текущем режиме. */
+  const textRoot = () => (latest.current.paged ? (pagedRef.current?.root() ?? null) : contentRef.current)
+  /** Линия чтения в ленте — сразу под верхней панелью. */
+  const lineY = () => (headerRef.current?.offsetHeight ?? 56) + 20
 
   // ── Отметка «прочитано» ──
   const completeChapter = useCallback(() => {
-    if (!chapter || !novel || markedRef.current === chapter.id) return
-    markedRef.current = chapter.id
-    if (user && !readSet.has(chapter.id)) {
-      markRead.mutate({ novelId: novel.id, chapterId: chapter.id, words: chapter.wordCount })
-    }
-  }, [chapter, novel, user, readSet, markRead])
+    const { chapter: c, novel: n, user: u } = latest.current
+    if (!c || !n || markedRef.current === c.id) return
+    markedRef.current = c.id
+    if (u && !readSet.has(c.id)) markRead.mutate({ novelId: n.id, chapterId: c.id, words: c.wordCount })
+  }, [readSet, markRead])
 
-  // ── Сохранение позиции ──
-  const persist = useCallback(
-    (fraction: number) => {
-      if (!chapter || !novel) return
-      setPosition(chapter.id, fraction)
-      if (user) saveProgress.mutate({ novelId: novel.id, chapterId: chapter.id, position: fraction })
-      else setGuest(novel.id, chapter.id, fraction)
+  // ── Сохранение места чтения ──
+  const flush = useCallback(() => {
+    clearTimeout(saveTimer.current)
+    const p = pending.current
+    if (!p) return
+    pending.current = null
+    setPosition(p.chapterId, p.position)
+    if (latest.current.user) saveProgress.mutate({ novelId: p.novelId, chapterId: p.chapterId, position: p.position })
+    else setGuest(p.novelId, p.chapterId, p.position)
+  }, [setPosition, setGuest, saveProgress.mutate])
+
+  const noteAnchor = useCallback(
+    (a: Anchor | null) => {
+      const { chapter: c, novel: n, blocks: b } = latest.current
+      if (!a || !c || !n) return
+      anchorRef.current = a
+      if (restored.current !== c.id) return
+      const position = Math.round(anchorToPosition(textRoot(), a, b.length) * 1e7) / 1e7
+      pending.current = { chapterId: c.id, novelId: n.id, position }
+      clearTimeout(saveTimer.current)
+      saveTimer.current = window.setTimeout(flush, 1200)
     },
-    [chapter?.id, novel?.id, user?.id]
+    [flush]
   )
 
   useEffect(() => {
-    if (!chapter || restored.current !== chapter.id) return
-    const t = setTimeout(() => persist(progress), 1500)
-    return () => clearTimeout(t)
-  }, [progress, chapter, persist])
+    const onHide = () => document.visibilityState === 'hidden' && flush()
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', flush)
+    }
+  }, [flush])
 
-  useEffect(() => {
-    const flush = () => document.visibilityState === 'hidden' && persist(progressRef.current)
-    document.addEventListener('visibilitychange', flush)
-    return () => document.removeEventListener('visibilitychange', flush)
-  }, [persist])
+  // Ушли из главы — место сохраняется сразу.
+  useEffect(() => () => flush(), [chapter?.id, flush])
 
   // Подгружаем следующую главу заранее — переход будет мгновенным.
   useEffect(() => {
     if (next) qc.prefetchQuery({ queryKey: qk.chapter(next.id), queryFn: () => api.getChapter(next.id) })
   }, [next, qc])
 
-  // ── Лента: прогресс и автоскрытие панелей ──
+  /** Открыть место в тексте в текущем режиме. */
+  const showAnchor = (a: Anchor, flash = false) => {
+    if (latest.current.paged) pagedRef.current?.goToAnchor(a, { flash })
+    else {
+      const root = contentRef.current
+      if (!root) return
+      suppressScroll.current = performance.now() + 450
+      scrollToAnchor(root, a, lineY())
+      if (flash) flashBlock(root, a.block)
+    }
+    anchorRef.current = a
+  }
+
+  /** Место, которое сейчас перед глазами читателя. */
+  const currentAnchor = (): Anchor | null => {
+    if (latest.current.paged) return pagedRef.current?.getAnchor() ?? anchorRef.current
+    const root = contentRef.current
+    return (root && scrollAnchor(root, lineY())) ?? anchorRef.current
+  }
+
+  // ── Лента: прогресс, место чтения и автоскрытие панелей ──
   useEffect(() => {
-    if (paged) return
+    if (paged || !chapter) return
     let last = window.scrollY
     let frame = 0
+    let idle = 0
     const update = () => {
       frame = 0
       const y = window.scrollY
       const max = document.documentElement.scrollHeight - window.innerHeight
       setProgress(max > 0 ? Math.round(Math.min(1, y / max) * 1000) / 1000 : 1)
-      if (y > last + 8 && y > 140) setUiVisible(false)
-      else if (y < last - 8 || y < 80 || y >= max - 4) setUiVisible(true)
+      if (performance.now() >= suppressScroll.current) {
+        if (y > last + 8 && y > 140) setUiVisible(false)
+        else if (y < last - 8 || y < 80 || y >= max - 4) setUiVisible(true)
+      }
       last = y
+    }
+    const settle = () => {
+      if (performance.now() < suppressScroll.current) return
+      const root = contentRef.current
+      if (root) noteAnchor(scrollAnchor(root, lineY()))
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(update)
+      clearTimeout(idle)
+      idle = window.setTimeout(settle, 180)
     }
     update()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => {
       cancelAnimationFrame(frame)
+      clearTimeout(idle)
       window.removeEventListener('scroll', onScroll)
     }
-  }, [paged, chapter?.id])
+  }, [paged, chapter?.id, noteAnchor])
 
   useEffect(() => {
     if (paged || !endRef.current) return
@@ -252,93 +355,134 @@ export default function Reader() {
     return () => io.disconnect()
   }, [paged, completeChapter, blocks])
 
-  // ── Страницы: раскладка в колонки ──
-  const measure = useCallback(() => {
-    const vp = viewportRef.current
-    const flow = flowRef.current
-    if (!vp || !flow) return
-    const width = vp.clientWidth
-    flow.style.columnWidth = `${width}px`
-    flow.style.columnGap = `${PAGE_GAP}px`
-    flow.style.width = `${width}px`
-    const total = Math.max(1, Math.round((flow.scrollWidth + PAGE_GAP) / (width + PAGE_GAP)))
-    setPageWidth(width)
-    setPages(total)
-    return total
-  }, [])
-
+  // Лента: сменились шрифт или размер — возвращаемся к тому же месту.
   useLayoutEffect(() => {
-    if (!paged || !chapter) return
-    const fraction = progressRef.current
-    const total = measure()
-    if (total && restored.current === chapter.id) setPage(Math.round(fraction * (total - 1)))
-  }, [paged, chapter?.id, s.fontSize, s.lineHeight, s.paragraphGap, s.font, s.width, s.indent, s.justify, s.hyphens, measure])
+    if (paged || !chapter || restored.current !== chapter.id) return
+    const a = anchorRef.current
+    if (a) showAnchor(a)
+  }, [layoutKey])
 
+  // Лента: поворот экрана или догрузка шрифта — тоже держим место.
   useEffect(() => {
-    if (!paged) return
-    const vp = viewportRef.current
-    if (!vp) return
+    if (paged) return
+    const root = contentRef.current
+    if (!root) return
+    let width = root.clientWidth
+    const keep = () => {
+      const a = anchorRef.current
+      if (a && restored.current === latest.current.chapter?.id) showAnchor(a)
+    }
     const ro = new ResizeObserver(() => {
-      const fraction = progressRef.current
-      const total = measure()
-      if (total) setPage(Math.round(fraction * (total - 1)))
+      if (root.clientWidth === width) return
+      width = root.clientWidth
+      keep()
     })
-    ro.observe(vp)
-    document.fonts?.ready.then(() => measure())
-    return () => ro.disconnect()
-  }, [paged, measure, chapter?.id])
+    ro.observe(root)
+    document.fonts?.addEventListener?.('loadingdone', keep)
+    return () => {
+      ro.disconnect()
+      document.fonts?.removeEventListener?.('loadingdone', keep)
+    }
+  }, [paged, chapter?.id])
 
+  // Переключили режим — открываем то же место.
+  const prevPaged = useRef(paged)
+  useLayoutEffect(() => {
+    if (prevPaged.current === paged) return
+    prevPaged.current = paged
+    const a = anchorRef.current
+    if (a && chapter && restored.current === chapter.id) showAnchor(a)
+  }, [paged])
+
+  // ── Страницы ──
+  // Панели закрывают нижние строки страницы — прячем их вскоре после открытия главы.
+  const panelRef = useRef(panel)
+  panelRef.current = panel
   useEffect(() => {
     if (!paged) return
-    const p = pages > 1 ? page / (pages - 1) : 1
-    setProgress(p)
-    if (page >= pages - 1 && restored.current === chapter?.id) completeChapter()
-  }, [page, pages, paged, completeChapter, chapter?.id])
+    const t = setTimeout(() => !panelRef.current && setUiVisible(false), 3200)
+    return () => clearTimeout(t)
+  }, [paged, chapter?.id])
 
-  const turn = useCallback(
-    (delta: number) => {
-      if (delta > 0) {
-        if (page < pages - 1) setPage(page + 1)
-        else if (next) goTo(next)
-      } else {
-        if (page > 0) setPage(page - 1)
-        else if (prev) goTo(prev)
-      }
+  // Мышью панели открываются, если подвести курсор к верхнему или нижнему краю.
+  useEffect(() => {
+    if (!paged || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return
+    const onMove = (e: MouseEvent) => {
+      if (e.clientY < 64 || e.clientY > window.innerHeight - 96) setUiVisible(true)
+    }
+    window.addEventListener('mousemove', onMove, { passive: true })
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [paged])
+
+  const onPagedState = useCallback(
+    (st: PagedState) => {
+      setPageInfo({ page: st.page, pages: st.pages, perView: st.perView })
+      const last = Math.max(0, Math.floor((st.pages - 1) / st.perView) * st.perView)
+      setProgress(last > 0 ? st.page / last : 1)
+      noteAnchor(st.anchor)
+      if (st.byUser) setUiVisible(false)
+      if (st.page >= last && restored.current === latest.current.chapter?.id) completeChapter()
     },
-    [page, pages, next, prev, goTo]
+    [noteAnchor, completeChapter]
   )
 
-  // ── Восстановление позиции при открытии главы ──
+  const onEdge = useCallback(
+    (dir: 1 | -1) => {
+      const { next: n, prev: p } = latest.current
+      if (dir === 1) {
+        if (n) goTo(n)
+        else toast.info('Это последняя глава', 'Продолжение появится здесь, как только его опубликуют')
+      } else if (p) goTo(p, { atEnd: true })
+    },
+    [goTo]
+  )
+
+  const toggleUi = useCallback(() => setUiVisible((v) => !v), [])
+  const openComments = useCallback(() => setPanel('comments'), [])
+  const openImage = useCallback((src: string, alt: string) => setLightbox({ src, alt }), [])
+
+  const restart = () => {
+    if (latest.current.paged) pagedRef.current?.goToPage(0)
+    else window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // ── Открытие главы: закладка, «с места», конец главы при листании назад ──
   useEffect(() => {
     if (!chapter || restored.current === chapter.id) return
+    let cancelled = false
     const run = async () => {
       await document.fonts?.ready
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      if (cancelled) return
       const local = usePositions.getState().positions[chapter.id]
       const fromServer = serverProgress?.chapterId === chapter.id ? serverProgress.position : undefined
       const saved = local ?? fromServer ?? 0
-      const target = Number(params.get('p'))
+      const p = params.get('p')
+      const atEnd = (location.state as { at?: string } | null)?.at === 'end'
       markedRef.current = readSet.has(chapter.id) ? chapter.id : null
-      if (paged) {
-        const total = measure() ?? 1
-        setPage(saved > 0.02 && saved < 0.98 ? Math.round(saved * (total - 1)) : 0)
-      } else {
-        const max = document.documentElement.scrollHeight - window.innerHeight
-        window.scrollTo({ top: saved > 0.02 && saved < 0.98 ? saved * max : 0, behavior: 'instant' as ScrollBehavior })
+      anchorRef.current = null
+
+      let resumed = false
+      if (p !== null && Number.isFinite(Number(p))) {
+        showAnchor({ block: Math.max(0, Math.floor(Number(p))), char: Math.max(0, Math.floor(Number(params.get('c')) || 0)) }, true)
+      } else if (atEnd && latest.current.paged) {
+        pagedRef.current?.goToPage(Infinity)
+      } else if (saved > 0.002 && saved < 0.985) {
+        showAnchor(positionToAnchor(textRoot(), saved, latest.current.blocks.length))
+        resumed = true
       }
       restored.current = chapter.id
-      if (params.has('p') && !Number.isNaN(target)) {
-        jumpToBlock(target)
-        setParams((p) => {
-          p.delete('p')
-          return p
-        }, { replace: true })
-      } else if (saved > 0.02 && saved < 0.98) {
-        toast.action(
-          `Продолжаем с ${Math.round(saved * 100)}%`,
-          { label: 'Начать главу сначала', onClick: () => (paged ? setPage(0) : window.scrollTo({ top: 0, behavior: 'smooth' })) },
-          'Позиция в главе сохранена'
-        )
+      noteAnchor(currentAnchor())
+
+      if (latest.current.paged) {
+        const info = pageInfoRef.current
+        if (info.page >= Math.max(0, Math.floor((info.pages - 1) / info.perView) * info.perView)) completeChapter()
+      }
+      if (p !== null || atEnd) {
+        // Убираем ?p= из адреса, не сбрасывая прокрутку наверх.
+        navigate({ pathname: location.pathname, search: '' }, { replace: true, state: null, preventScrollReset: true })
+      } else if (resumed) {
+        toast.action(`Продолжаем с ${Math.round(saved * 100)}%`, { label: 'Начать главу сначала', onClick: restart }, 'Место в главе сохранено')
       }
       if (safeSession.get(TTS_CONTINUE)) {
         safeSession.remove(TTS_CONTINUE)
@@ -346,46 +490,11 @@ export default function Reader() {
       }
     }
     setProgress(0)
-    setPage(0)
     run()
+    return () => {
+      cancelled = true
+    }
   }, [chapter?.id])
-
-  const blockElement = (i: number) => contentRef.current?.querySelector<HTMLElement>(`[data-block="${i}"]`) ?? null
-
-  function jumpToBlock(i: number) {
-    const el = blockElement(i)
-    if (!el) return
-    if (paged) {
-      const flow = flowRef.current
-      if (flow) {
-        const left = el.offsetLeft
-        setPage(Math.floor(left / ((pageWidth || flow.clientWidth) + PAGE_GAP)))
-      }
-    } else {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    }
-    el.classList.remove('flash')
-    void el.offsetWidth
-    el.classList.add('flash')
-  }
-
-  /** Первый абзац, который сейчас виден, — для закладки и старта озвучки. */
-  const firstVisibleBlock = () => {
-    const nodes = contentRef.current?.querySelectorAll<HTMLElement>('[data-block]')
-    if (!nodes) return 0
-    if (paged) {
-      const vp = viewportRef.current?.getBoundingClientRect()
-      for (const n of nodes) {
-        const r = n.getBoundingClientRect()
-        if (vp && r.left >= vp.left - 4 && r.left < vp.right && r.bottom > vp.top) return Number(n.dataset.block)
-      }
-      return 0
-    }
-    for (const n of nodes) {
-      if (n.getBoundingClientRect().bottom > 96) return Number(n.dataset.block)
-    }
-    return 0
-  }
 
   const bookmarkHere = () => {
     if (!user) {
@@ -393,11 +502,12 @@ export default function Reader() {
       return
     }
     if (!novel || !chapter) return
-    const i = firstVisibleBlock()
-    const b = blocks[i]
-    const excerpt = b && 'text' in b ? plainText(b.text).slice(0, 220) : chapter.title
+    const a = currentAnchor() ?? { block: 0, char: 0 }
+    const root = textRoot()
+    const excerpt = excerptAt(blockEl(root, a.block)?.textContent ?? '', a.char) || chapter.title || chapterLabel(chapter)
+    flashBlock(root, a.block)
     addBookmark.mutate(
-      { novelId: novel.id, chapterId: chapter.id, paragraph: i, excerpt, note: '' },
+      { novelId: novel.id, chapterId: chapter.id, paragraph: a.block, charOffset: a.char, excerpt, note: '' },
       {
         onSuccess: () =>
           toast.action('Закладка сохранена', { label: 'Все закладки', onClick: () => navigate('/profile/bookmarks') }, `«${excerpt.slice(0, 70)}…»`),
@@ -421,23 +531,24 @@ export default function Reader() {
 
   useEffect(() => {
     if (tts.active === null) return
-    const el = blockElement(tts.active)
-    if (!el) return
     if (paged) {
-      const p = Math.floor(el.offsetLeft / ((pageWidth || 1) + PAGE_GAP))
-      if (p !== page) setPage(p)
-    } else {
-      const r = el.getBoundingClientRect()
-      if (r.top < 90 || r.bottom > window.innerHeight - 120) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      pagedRef.current?.goToBlock(tts.active, { onlyIfHidden: true })
+      return
     }
+    const el = blockEl(contentRef.current, tts.active)
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    if (r.top < 90 || r.bottom > window.innerHeight - 120) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [tts.active])
 
   const toggleTts = () => {
     if (!tts.supported) return toast.error('Озвучка недоступна', 'Ваш браузер не поддерживает синтез речи')
-    if (tts.status === 'idle') tts.start(firstVisibleBlock())
+    if (tts.status === 'idle') tts.start(currentAnchor()?.block ?? 0)
     else if (tts.status === 'playing') tts.pause()
     else tts.resume()
   }
+
+  const toggleMode = () => s.set({ mode: paged ? 'scroll' : 'paged' })
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen()
@@ -456,73 +567,69 @@ export default function Reader() {
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)
   }, [])
-  {
-    keyHandler.current = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement
-      if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || e.metaKey || e.ctrlKey || e.altKey) return
-      if (panel && e.key !== 'Escape') return
-      const k = e.key.toLowerCase()
-      if (e.key === 'ArrowRight' || (paged && (e.key === 'PageDown' || e.key === ' '))) {
-        e.preventDefault()
-        if (paged) turn(1)
-        else goTo(next)
-      } else if (e.key === 'ArrowLeft' || (paged && e.key === 'PageUp')) {
-        e.preventDefault()
-        if (paged) turn(-1)
-        else goTo(prev)
-      } else if (k === 'c' || k === 'с') setPanel('chapters')
-      else if (k === 's' || k === 'ы') setPanel('settings')
-      else if (k === 'b' || k === 'и') bookmarkHere()
-      else if (k === 't' || k === 'е') toggleTts()
-      else if (k === 'f' || k === 'а') toggleFullscreen()
-      else if (e.key === 'Escape') setPanel(null)
-    }
+  keyHandler.current = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement
+    if (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || e.metaKey || e.ctrlKey || e.altKey) return
+    if (panel && e.key !== 'Escape') return
+    if ((e.key === ' ' || e.key === 'Enter') && t.closest('button,a')) return
+    const k = e.key.toLowerCase()
+    const forward = e.key === 'ArrowRight' || (paged && (e.key === 'ArrowDown' || e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)))
+    const backward = e.key === 'ArrowLeft' || (paged && (e.key === 'ArrowUp' || e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)))
+    if (forward || backward) {
+      e.preventDefault()
+      if (paged) pagedRef.current?.turn(forward ? 1 : -1)
+      else goTo(forward ? next : prev)
+    } else if (paged && e.key === 'Home') pagedRef.current?.goToPage(0)
+    else if (paged && e.key === 'End') pagedRef.current?.goToPage(Infinity)
+    else if (k === 'c' || k === 'с') setPanel('chapters')
+    else if (k === 's' || k === 'ы') setPanel('settings')
+    else if (k === 'b' || k === 'и') bookmarkHere()
+    else if (k === 't' || k === 'е') toggleTts()
+    else if (k === 'f' || k === 'а') toggleFullscreen()
+    else if (k === 'm' || k === 'ь') toggleMode()
+    else if (e.key === 'Escape') setPanel(null)
   }
 
-  // ── Касания и свайпы в постраничном режиме ──
-  const pointer = useRef<{ x: number; y: number; t: number } | null>(null)
+  // ── Касание текста в ленте показывает и прячет панели ──
+  const pointer = useRef<{ x: number; y: number } | null>(null)
   const onPointerDown = (e: React.PointerEvent) => {
-    pointer.current = { x: e.clientX, y: e.clientY, t: Date.now() }
+    pointer.current = { x: e.clientX, y: e.clientY }
   }
   const onPointerUp = (e: React.PointerEvent) => {
     const start = pointer.current
     pointer.current = null
-    if (!start) return
-    if ((e.target as Element).closest('a,button,figure,textarea,input,[data-no-toggle]')) return
-    const dx = e.clientX - start.x
-    const dy = e.clientY - start.y
+    if (!start || (e.target as Element).closest('a,button,figure,textarea,input,[data-no-toggle]')) return
     if (window.getSelection()?.toString()) return
-    if (paged && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-      turn(dx < 0 ? 1 : -1)
-      return
-    }
-    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
-      const zone = e.clientX / window.innerWidth
-      if (paged && zone < 0.28) turn(-1)
-      else if (paged && zone > 0.72) turn(1)
-      else setUiVisible((v) => !v)
-    }
-  }
-  const wheelLock = useRef(0)
-  const onWheel = (e: React.WheelEvent) => {
-    if (!paged || Math.abs(e.deltaY) < 20 || Date.now() < wheelLock.current) return
-    wheelLock.current = Date.now() + 450
-    turn(e.deltaY > 0 ? 1 : -1)
+    if (Math.abs(e.clientX - start.x) < 8 && Math.abs(e.clientY - start.y) < 8) setUiVisible((v) => !v)
   }
 
-  // Текст главы перерисовывается только при смене главы или озвучиваемого абзаца — не при прокрутке.
+  // Текст главы перерисовывается только при смене главы, режима или озвучиваемого абзаца — не при прокрутке.
   const content = useMemo(
     () =>
       novel && chapter ? (
         <ChapterContent
           blocks={blocks}
           activeIndex={tts.active}
+          eager={paged}
           header={<ChapterHeader novel={novel} chapter={chapter} />}
-          footer={<ChapterEnd novel={novel} next={next} endRef={endRef} />}
-          onImageClick={(src, alt) => setLightbox({ src, alt })}
+          footer={<ChapterEnd novel={novel} next={next} endRef={endRef} onComments={paged && chapter.published ? openComments : undefined} />}
+          onImageClick={openImage}
         />
       ) : null,
-    [blocks, tts.active, novel, chapter, next]
+    [blocks, tts.active, novel, chapter, next, paged, openComments, openImage]
+  )
+  // Копия для анимации листания: тот же текст и та же раскладка, но без ссылок на элементы.
+  const copyContent = useMemo(
+    () =>
+      novel && chapter && paged ? (
+        <ChapterContent
+          blocks={blocks}
+          eager
+          header={<ChapterHeader novel={novel} chapter={chapter} />}
+          footer={<ChapterEnd novel={novel} next={next} onComments={chapter.published ? noop : undefined} />}
+        />
+      ) : null,
+    [blocks, novel, chapter, next, paged]
   )
 
   // ── Состояния загрузки ──
@@ -561,6 +668,12 @@ export default function Reader() {
   } as CSSProperties
 
   const readCount = ordered.filter((c) => readSet.has(c.id)).length
+  const lastPage = Math.max(0, Math.floor((pageInfo.pages - 1) / pageInfo.perView) * pageInfo.perView)
+  const pageLabel =
+    pageInfo.perView === 2 && pageInfo.page + 1 < pageInfo.pages
+      ? `${pageInfo.page + 1}–${pageInfo.page + 2} из ${pageInfo.pages}`
+      : `${pageInfo.page + 1} из ${pageInfo.pages}`
+  const minutesLeft = Math.ceil(readingMinutes(chapter.wordCount) * (1 - progress))
 
   return (
     <div className={`reader-root reader-theme-${s.theme} min-h-[100dvh]`} style={vars}>
@@ -571,12 +684,13 @@ export default function Reader() {
 
       {/* Верхняя панель */}
       <motion.header
+        ref={headerRef}
         initial={false}
         animate={{ y: uiVisible ? 0 : -80, opacity: uiVisible ? 1 : 0 }}
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         className="fixed inset-x-0 top-0 z-40 border-b border-reader-line/10 bg-reader-bg/85 pt-safe backdrop-blur-xl"
       >
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-1 px-2 sm:gap-2 sm:px-4">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-0.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] sm:gap-2 sm:px-4">
           <Link
             to={`/novel/${novel.slug}`}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-reader-fg/70 transition-colors hover:bg-reader-line/10 hover:text-reader-fg"
@@ -594,7 +708,7 @@ export default function Reader() {
           {isAdmin && (
             <Link
               to={`/admin/novels/${novel.id}/chapters/${chapter.id}`}
-              className="hidden h-10 w-10 items-center justify-center rounded-full text-reader-fg/70 hover:bg-reader-line/10 sm:flex"
+              className="hidden h-10 w-10 items-center justify-center rounded-full text-reader-fg/70 hover:bg-reader-line/10 md:flex"
               title="Редактировать главу"
             >
               <PenLine className="h-[18px] w-[18px]" />
@@ -603,16 +717,19 @@ export default function Reader() {
           <RIcon label="Оглавление (C)" onClick={() => setPanel('chapters')}>
             <List className="h-5 w-5" />
           </RIcon>
-          <RIcon label="Закладка (B)" onClick={bookmarkHere}>
+          <RIcon label="Закладка на этом месте (B)" onClick={bookmarkHere}>
             <BookmarkPlus className="h-5 w-5" />
           </RIcon>
           <RIcon label="Озвучка (T)" onClick={toggleTts} active={tts.status !== 'idle'}>
             <Headphones className="h-5 w-5" />
           </RIcon>
+          <RIcon label={paged ? 'Читать лентой (M)' : 'Читать по страницам (M)'} onClick={toggleMode} className="max-sm:hidden">
+            {paged ? <ScrollText className="h-5 w-5" /> : <BookOpen className="h-5 w-5" />}
+          </RIcon>
           <RIcon label="Настройки текста (S)" onClick={() => setPanel('settings')}>
             <Type className="h-5 w-5" />
           </RIcon>
-          <RIcon label="Полный экран (F)" onClick={toggleFullscreen} className="max-sm:hidden">
+          <RIcon label="Полный экран (F)" onClick={toggleFullscreen} className="max-md:hidden">
             {fullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
           </RIcon>
         </div>
@@ -626,30 +743,32 @@ export default function Reader() {
 
       {/* Текст */}
       {paged ? (
-        <div
-          className="fixed inset-0 select-text"
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onWheel={onWheel}
-        >
-          <div
-            ref={viewportRef}
-            className="paged-viewport absolute bottom-16 left-1/2 top-16 w-[calc(100%-2.5rem)] -translate-x-1/2 sm:bottom-20 sm:top-20"
-            style={{ maxWidth: s.width }}
-          >
-            <div
-              ref={(el) => {
-                flowRef.current = el
-                contentRef.current = el
-              }}
-              className="paged-flow"
-              style={{ transform: `translateX(-${page * (pageWidth + PAGE_GAP)}px)` }}
-            >
-              {content}
-            </div>
+        <div className="fixed inset-0 overflow-hidden">
+          <div className="paged-running-top" style={{ opacity: uiVisible ? 0 : 1 }} aria-hidden>
+            <span className="truncate">
+              {chapterLabel(chapter)}
+              {chapter.title ? ` · ${chapter.title}` : ''}
+            </span>
           </div>
-          <div className="pointer-events-none fixed bottom-5 inset-x-0 text-center text-xs tabular text-reader-muted sm:bottom-7">
-            {page + 1} / {pages}
+          <div className="paged-stage">
+            <PagedBook
+              ref={pagedRef}
+              content={content}
+              copyContent={copyContent}
+              chapterKey={chapter.id}
+              layoutKey={layoutKey}
+              maxWidth={s.width}
+              turnStyle={turnStyle}
+              spreadPref={s.spread}
+              onState={onPagedState}
+              onTapCenter={toggleUi}
+              onEdge={onEdge}
+            />
+          </div>
+          <div className="paged-running-bottom" style={{ opacity: uiVisible ? 0 : 1 }} aria-hidden>
+            <span>{pageLabel}</span>
+            <span className="opacity-50">·</span>
+            <span>{progress >= 1 ? 'конец главы' : `ещё ${Math.max(1, minutesLeft)} мин`}</span>
           </div>
         </div>
       ) : (
@@ -668,33 +787,52 @@ export default function Reader() {
       {/* Нижняя панель */}
       <motion.div
         initial={false}
-        animate={{ y: uiVisible ? 0 : 120, opacity: uiVisible ? 1 : 0 }}
+        animate={{ y: uiVisible ? 0 : 160, opacity: uiVisible ? 1 : 0 }}
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4"
       >
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-reader-line/10 bg-reader-surface/90 p-1.5 shadow-float backdrop-blur-xl">
-          <button
-            onClick={() => goTo(prev)}
-            disabled={!prev}
-            className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-reader-fg/80 transition-colors hover:bg-reader-line/10 disabled:opacity-30 sm:px-4"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span className="max-sm:hidden">Назад</span>
-          </button>
-          <button onClick={() => setPanel('chapters')} className="min-w-[8.5rem] rounded-full px-3 py-1 text-center transition-colors hover:bg-reader-line/10">
-            <span className="block text-[11px] text-reader-muted">
-              Глава {index + 1} из {ordered.length}
-            </span>
-            <span className="block text-sm font-semibold tabular">{Math.round(progress * 100)}%</span>
-          </button>
-          <button
-            onClick={() => goTo(next)}
-            disabled={!next}
-            className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-reader-fg/80 transition-colors hover:bg-reader-line/10 disabled:opacity-30 sm:px-4"
-          >
-            <span className="max-sm:hidden">Далее</span>
-            <ChevronRight className="h-4 w-4" />
-          </button>
+        <div className={cn('flex w-full max-w-md flex-col items-center gap-2', uiVisible && 'pointer-events-auto')}>
+          {paged && lastPage > 0 && (
+            <label className="flex w-full items-center gap-3 rounded-full border border-reader-line/10 bg-reader-surface/90 py-1 pl-4 pr-4 shadow-float backdrop-blur-xl">
+              <span className="w-7 text-right text-[11px] tabular text-reader-muted">{pageInfo.page + 1}</span>
+              <input
+                type="range"
+                className="paged-scrubber min-w-0 flex-1"
+                min={0}
+                max={lastPage}
+                step={pageInfo.perView}
+                value={pageInfo.page}
+                onChange={(e) => pagedRef.current?.goToPage(Number(e.target.value))}
+                aria-label="Страница главы"
+                style={{ ['--fill' as string]: `${lastPage > 0 ? (pageInfo.page / lastPage) * 100 : 100}%` }}
+              />
+              <span className="w-7 text-[11px] tabular text-reader-muted">{pageInfo.pages}</span>
+            </label>
+          )}
+          <div className="flex items-center gap-1 rounded-full border border-reader-line/10 bg-reader-surface/90 p-1.5 shadow-float backdrop-blur-xl">
+            <button
+              onClick={() => goTo(prev)}
+              disabled={!prev}
+              className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-reader-fg/80 transition-colors hover:bg-reader-line/10 disabled:opacity-30 sm:px-4"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span className="max-sm:hidden">Назад</span>
+            </button>
+            <button onClick={() => setPanel('chapters')} className="min-w-[8.5rem] rounded-full px-3 py-1 text-center transition-colors hover:bg-reader-line/10">
+              <span className="block text-[11px] text-reader-muted">
+                Глава {index + 1} из {ordered.length}
+              </span>
+              <span className="block text-sm font-semibold tabular">{Math.round(progress * 100)}%</span>
+            </button>
+            <button
+              onClick={() => goTo(next)}
+              disabled={!next}
+              className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-reader-fg/80 transition-colors hover:bg-reader-line/10 disabled:opacity-30 sm:px-4"
+            >
+              <span className="max-sm:hidden">Далее</span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </motion.div>
 
@@ -705,7 +843,7 @@ export default function Reader() {
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 30, scale: 0.95 }}
-            className="fixed inset-x-0 bottom-24 z-40 flex justify-center px-4"
+            className={cn('fixed inset-x-0 z-40 flex justify-center px-4', paged && uiVisible && lastPage > 0 ? 'bottom-36' : 'bottom-24')}
           >
             <div className="flex items-center gap-1 rounded-full border border-reader-line/10 bg-reader-surface/95 p-1.5 pl-4 shadow-float backdrop-blur-xl">
               <span className="mr-2 flex items-end gap-[3px]" aria-hidden>
@@ -757,6 +895,10 @@ export default function Reader() {
 
       <Sheet open={panel === 'settings'} onClose={() => setPanel(null)} title="Настройки чтения" plain>
         <SettingsPanel />
+      </Sheet>
+
+      <Sheet open={panel === 'comments'} onClose={() => setPanel(null)} title="Обсуждение главы">
+        <Comments novelId={novel.id} chapterId={chapter.id} />
       </Sheet>
 
       <Modal open={Boolean(lightbox)} onClose={() => setLightbox(null)} size="xl" className="p-3 sm:p-3">

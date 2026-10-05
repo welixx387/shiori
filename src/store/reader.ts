@@ -15,6 +15,10 @@ export interface ReaderSettings {
   justify: boolean
   hyphens: boolean
   mode: 'scroll' | 'paged'
+  /** Анимация листания в постраничном режиме */
+  turn: 'flip' | 'slide' | 'none'
+  /** Разворот из двух страниц на широком экране */
+  spread: 'auto' | 'single'
   dim: number
   ttsRate: number
   ttsVoice: string | null
@@ -31,7 +35,9 @@ export const READER_DEFAULTS: ReaderSettings = {
   indent: false,
   justify: false,
   hyphens: true,
-  mode: 'scroll',
+  mode: 'paged',
+  turn: 'flip',
+  spread: 'auto',
   dim: 0,
   ttsRate: 1,
   ttsVoice: null,
@@ -96,6 +102,15 @@ export const useReaderSettings = create<ReaderState>()(
       set: (patch) => set(patch),
       reset: () => set(READER_DEFAULTS),
     }),
-    { name: 'shiori-reader', storage: createJSONStorage(() => localStorage), version: 1 }
+    {
+      name: 'shiori-reader',
+      storage: createJSONStorage(() => localStorage),
+      version: 2,
+      // v2: появился постраничный режим с листанием — включаем его всем, кто не выбирал режим сам.
+      migrate: (persisted, version) => {
+        const old = (persisted ?? {}) as Partial<ReaderSettings>
+        return version < 2 ? { ...old, mode: 'paged', turn: 'flip', spread: 'auto' } : old
+      },
+    }
   )
 )

@@ -14,11 +14,13 @@ interface Props {
   footer?: ReactNode
   activeIndex?: number | null
   className?: string
+  /** Картинки грузятся сразу — в постраничном режиме от них зависит раскладка страниц */
+  eager?: boolean
   onImageClick?: (src: string, alt: string) => void
 }
 
 /** Текст главы. У каждого блока есть data-block — по нему работают закладки и озвучка. */
-export const ChapterContent = memo(function ChapterContent({ blocks, header, footer, activeIndex, className, onImageClick }: Props) {
+export const ChapterContent = memo(function ChapterContent({ blocks, header, footer, activeIndex, className, eager, onImageClick }: Props) {
   let firstParagraph = true
   return (
     <div className={cn('reader-prose', className)} lang="ru">
@@ -64,7 +66,8 @@ export const ChapterContent = memo(function ChapterContent({ blocks, header, foo
                 <img
                   src={b.src}
                   alt={b.alt}
-                  loading="lazy"
+                  loading={eager ? 'eager' : 'lazy'}
+                  draggable={false}
                   className="cursor-zoom-in"
                   onClick={() => onImageClick?.(b.src, b.alt)}
                 />

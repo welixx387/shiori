@@ -145,6 +145,8 @@ export interface Bookmark {
   novelId: string
   chapterId: string
   paragraph: number
+  /** Смещение в символах внутри абзаца — закладка открывает точное место */
+  charOffset?: number
   excerpt: string
   note: string
   createdAt: string

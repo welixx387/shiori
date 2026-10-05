@@ -673,7 +673,7 @@ export class SupabaseApi implements Api {
       this.sb.from('ratings').select('novel_id, score, updated_at'),
       this.sb
         .from('bookmarks')
-        .select('id, novel_id, chapter_id, paragraph, excerpt, note, created_at')
+        .select('*')
         .order('created_at', { ascending: false }),
     ])
     for (const r of [library, progress, reads, ratings, bookmarks]) if (r.error) fail(r.error)
@@ -707,6 +707,7 @@ export class SupabaseApi implements Api {
           novelId: r.novel_id,
           chapterId: r.chapter_id,
           paragraph: r.paragraph,
+          charOffset: Number(r.char_offset ?? 0),
           excerpt: r.excerpt,
           note: r.note ?? '',
           createdAt: r.created_at,
@@ -784,20 +785,23 @@ export class SupabaseApi implements Api {
 
   async addBookmark(input: BookmarkInput) {
     const user = await this.requireUser()
-    const { data, error } = await this.sb
-      .from('bookmarks')
-      .insert({
-        user_id: user.id,
-        novel_id: input.novelId,
-        chapter_id: input.chapterId,
-        paragraph: input.paragraph,
-        excerpt: input.excerpt,
-        note: input.note,
-      })
-      .select('id, created_at')
-      .single()
+    const row = {
+      user_id: user.id,
+      novel_id: input.novelId,
+      chapter_id: input.chapterId,
+      paragraph: input.paragraph,
+      excerpt: input.excerpt,
+      note: input.note,
+    }
+    const insert = (values: Row) => this.sb.from('bookmarks').insert(values).select('id, created_at').single()
+    let { data, error } = await insert({ ...row, char_offset: Math.max(0, Math.round(input.charOffset ?? 0)) })
+    // База ещё без колонки char_offset (schema.sql не обновлён) — сохраняем закладку с точностью до абзаца.
+    if (error && (error.code === 'PGRST204' || /char_offset/.test(error.message))) {
+      ;({ data, error } = await insert(row))
+      if (!error) input = { ...input, charOffset: 0 }
+    }
     if (error) fail(error)
-    return { ...input, id: data.id, createdAt: data.created_at }
+    return { ...input, id: data!.id, createdAt: data!.created_at }
   }
 
   async updateBookmark(id: string, note: string) {

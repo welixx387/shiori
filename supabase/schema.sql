@@ -326,10 +326,13 @@ create table if not exists public.bookmarks (
   novel_id uuid not null references public.novels (id) on delete cascade,
   chapter_id uuid not null references public.chapters (id) on delete cascade,
   paragraph int not null default 0,
+  char_offset int not null default 0,
   excerpt text not null default '',
   note text not null default '',
   created_at timestamptz not null default now()
 );
+-- Точное место закладки внутри абзаца (для баз, созданных до этого обновления)
+alter table public.bookmarks add column if not exists char_offset int not null default 0;
 
 create index if not exists bookmarks_user_idx on public.bookmarks (user_id, created_at desc);
 create index if not exists reads_user_idx on public.chapter_reads (user_id, read_at desc);

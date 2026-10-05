@@ -25,7 +25,8 @@ export const usePositions = create<PositionsState>()(
       guest: {},
       setPosition: (chapterId, value) =>
         set((s) => {
-          const positions = { ...s.positions, [chapterId]: Math.round(value * 1000) / 1000 }
+          // Точность до символа: позиция — доля главы, и грубое округление сдвигало место на пару строк.
+          const positions = { ...s.positions, [chapterId]: Math.round(value * 1e7) / 1e7 }
           const keys = Object.keys(positions)
           if (keys.length > LIMIT) delete positions[keys[0]]
           return { positions }
