@@ -1,9 +1,9 @@
-import { Search, UserRoundPlus, Users } from 'lucide-react'
+import { ArrowLeftRight, Gift, Search, UserRoundPlus, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { UserChip } from '../components/collect/Collect'
 import { FriendButton } from '../components/social/FriendButton'
-import { ButtonLink } from '../components/ui/Button'
+import { ButtonLink, IconButton } from '../components/ui/Button'
 import { Tabs } from '../components/ui/Controls'
 import { EmptyState, Skeleton } from '../components/ui/Feedback'
 import { Container } from '../components/ui/Section'
@@ -11,20 +11,35 @@ import { useTitle } from '../hooks/useTitle'
 import { timeAgo } from '../lib/format'
 import { useFriends, useSearchUsers } from '../lib/queries'
 import { useUser } from '../store/auth'
+import { openExchange } from '../store/exchange'
 import type { PublicProfile } from '../types'
 
 type Tab = 'friends' | 'incoming' | 'outgoing'
 
 function PersonRow({ person, sub }: { person: PublicProfile; sub?: string }) {
+  const me = useUser()
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-line/[0.08] bg-surface/50 p-3.5 sm:flex-nowrap">
       <UserChip
         user={person}
         size={44}
-        className="flex-1"
+        className="min-w-0 flex-1 basis-[11rem]"
         sub={<span className="block truncate text-xs text-muted">@{person.username}{sub ? ` · ${sub}` : ''}</span>}
       />
-      <FriendButton userId={person.id} size="sm" />
+      {/* На узком экране кнопки уходят на вторую строку, чтобы имя не обрезалось */}
+      <div className="ml-auto flex items-center gap-1">
+        {me && me.id !== person.id && (
+          <>
+            <IconButton label="Подарить карточку" onClick={() => openExchange({ mode: 'gift', partner: person })}>
+              <Gift className="h-[18px] w-[18px]" />
+            </IconButton>
+            <IconButton label="Предложить обмен" onClick={() => openExchange({ mode: 'trade', partner: person })}>
+              <ArrowLeftRight className="h-[18px] w-[18px]" />
+            </IconButton>
+          </>
+        )}
+        <FriendButton userId={person.id} size="sm" />
+      </div>
     </div>
   )
 }
@@ -71,7 +86,7 @@ export default function People() {
         <Users className="h-3.5 w-3.5 text-accent" /> Сообщество
       </p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight">Читатели</h1>
-      <p className="mt-2 text-muted">Находите читателей по нику, добавляйте в друзья и меняйтесь карточками.</p>
+      <p className="mt-2 text-muted">Находите читателей по нику, добавляйте в друзья, дарите карточки и меняйтесь ими.</p>
 
       <label className="relative mt-6 block">
         <Search className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-faint" />

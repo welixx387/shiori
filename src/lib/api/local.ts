@@ -30,6 +30,7 @@ import type {
   Shelf,
   Title,
   TitleInput,
+  GiftInput,
   Trade,
   TradeInput,
   UserData,
@@ -1311,6 +1312,40 @@ export class LocalApi implements Api {
     trade.status = 'cancelled'
     trade.resolvedAt = now()
     await this.save('trades')
+  }
+
+  async giftCards(input: GiftInput) {
+    await this.ready
+    const me = this.requireUser()
+    const cards = [...new Set(input.cards)]
+    if (input.toUser === me.id) throw new ApiError('Подарить карточку самому себе нельзя')
+    if (!this.t.users.some((u) => u.id === input.toUser)) throw new ApiError('Читатель не найден')
+    if (!cards.length) throw new ApiError('Выберите карточку для подарка')
+    if (cards.length !== input.cards.length) throw new ApiError('Карточка указана дважды')
+    if (cards.length > 10) throw new ApiError('За один раз можно подарить не больше 10 карточек')
+    if (!this.owns(me.id, cards)) throw new ApiError('Часть карточек уже не у вас')
+    const at = now()
+    // Открытые обмены с подаренными карточками больше не выполнить — отменяем их.
+    for (const t of this.t.trades) {
+      if (t.status === 'pending' && [...t.offer, ...t.request].some((id) => cards.includes(id))) Object.assign(t, { status: 'cancelled', resolvedAt: at })
+    }
+    for (const c of this.t.userCards) {
+      if (cards.includes(c.id)) Object.assign(c, { userId: input.toUser, source: 'gift', obtainedAt: at })
+    }
+    const trade: Trade = {
+      id: shortId(14),
+      fromUser: me.id,
+      toUser: input.toUser,
+      offer: cards,
+      request: [],
+      message: (input.message ?? '').slice(0, 300),
+      status: 'accepted',
+      createdAt: at,
+      resolvedAt: at,
+    }
+    this.t.trades.push(trade)
+    await this.save('trades', 'userCards')
+    return { trade, instant: true }
   }
 
   // ───────────────────────── Покупки ─────────────────────────

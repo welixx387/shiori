@@ -191,7 +191,7 @@ export function Header() {
   const nav = NAV.filter((n) => !n.auth || user)
   if (user?.role === 'admin') nav.push({ to: '/admin', label: 'Админка', icon: Shield })
   const badgeFor = (item: NavItem) =>
-    item.badge === 'people' ? badges.requests : item.badge === 'cases' ? badges.trades + badges.cases : 0
+    item.badge === 'people' ? badges.requests : item.badge === 'cases' ? badges.trades + badges.gifts + badges.cases : 0
 
   return (
     <motion.header
@@ -278,7 +278,7 @@ export function MobileNav() {
   const items = [
     { to: '/', label: 'Главная', icon: House, badge: 0 },
     { to: '/catalog', label: 'Каталог', icon: Compass, badge: 0 },
-    { to: '/cases', label: 'Кейсы', icon: Gem, badge: badges.cases + badges.trades },
+    { to: '/cases', label: 'Кейсы', icon: Gem, badge: badges.cases + badges.trades + badges.gifts },
     { to: '/people', label: 'Люди', icon: Users, badge: badges.requests },
     { to: user ? '/profile' : '/login', label: user ? 'Профиль' : 'Войти', icon: user ? UserRound : LogIn, badge: 0 },
   ]

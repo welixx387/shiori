@@ -8,8 +8,9 @@ import {
 import { useMemo } from 'react'
 import { useUser } from '../store/auth'
 import { usePositions } from '../store/guest'
+import { useSeen } from '../store/seen'
 import { toast } from '../store/toast'
-import type { Bookmark, BookmarkInput, LibraryEntry, Novel, Shelf, UserData } from '../types'
+import { isGift, type Bookmark, type BookmarkInput, type LibraryEntry, type Novel, type Shelf, type UserData } from '../types'
 import { api, errorMessage } from './api'
 
 export const queryClient = new QueryClient({
@@ -406,18 +407,38 @@ export function useUserReading(userId: string | undefined) {
   return useQuery({ queryKey: sk.reading(userId ?? ''), queryFn: () => api.userReading(userId!), enabled: Boolean(userId) })
 }
 
-/** Счётчики для значков в меню: заявки в друзья, предложения обмена, закрытые кейсы. */
+/** Полученные подарки, которые читатель ещё не видел. */
+export function useNewGifts() {
+  const { data: trades } = useTrades()
+  const user = useUser()
+  const seenAt = useSeen((s) => (user ? s.gifts[user.id] : undefined))
+  return useMemo(
+    () =>
+      trades.filter(
+        (t) =>
+          t.toUser === user?.id &&
+          t.status === 'accepted' &&
+          isGift(t) &&
+          (!seenAt || Date.parse(t.resolvedAt ?? t.createdAt) > Date.parse(seenAt))
+      ),
+    [trades, user?.id, seenAt]
+  )
+}
+
+/** Счётчики для значков в меню: заявки в друзья, предложения обмена, новые подарки, закрытые кейсы. */
 export function useSocialBadges() {
   const { data: friends } = useFriends()
   const { data: trades } = useTrades()
   const { data: cases } = useMyCases()
+  const gifts = useNewGifts()
   const user = useUser()
   return useMemo(
     () => ({
       requests: friends.filter((f) => f.status === 'incoming').length,
       trades: trades.filter((t) => t.status === 'pending' && t.toUser === user?.id).length,
+      gifts: gifts.length,
       cases: cases.filter((c) => !c.openedAt).length,
     }),
-    [friends, trades, cases, user?.id]
+    [friends, trades, gifts, cases, user?.id]
   )
 }

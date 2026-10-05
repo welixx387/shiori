@@ -275,7 +275,7 @@ export interface OwnedCard {
   id: string
   userId: string
   cardId: string
-  source: 'case' | 'admin' | 'trade'
+  source: 'case' | 'admin' | 'trade' | 'gift'
   obtainedAt: string
 }
 
@@ -301,6 +301,16 @@ export interface TradeInput {
   request: string[]
   message?: string
 }
+
+export interface GiftInput {
+  toUser: string
+  /** id экземпляров карточек (OwnedCard), которые дарим */
+  cards: string[]
+  message?: string
+}
+
+/** Подарок — обмен, в котором ничего не просят взамен. */
+export const isGift = (t: Trade) => t.request.length === 0
 
 export interface WeeklyStatus {
   /** Кейс, который выдаётся бесплатно; null — администратор его не настроил */

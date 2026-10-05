@@ -1,10 +1,9 @@
 import { motion } from 'framer-motion'
-import { ArrowLeftRight, Crown, Gem, PenLine, ShieldCheck } from 'lucide-react'
+import { ArrowLeftRight, Crown, Gem, Gift, PenLine, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { CollectCard, RarityPill, TitleBadge } from '../components/collect/Collect'
 import { CollectionGrid, RarityFilter, groupOwned, type OwnedGroup } from '../components/collect/CollectionGrid'
-import { TradeDialog } from '../components/collect/TradeDialog'
 import { Embers } from '../components/effects/Embers'
 import { NotFound } from '../components/layout/Layout'
 import { FriendButton } from '../components/social/FriendButton'
@@ -19,10 +18,24 @@ import { auraInfo } from '../lib/constants'
 import { formatDate, plural } from '../lib/format'
 import { useCardMap, useCards, useNovelMap, usePublicProfile, useTitleMap, useUserCards, useUserTitles } from '../lib/queries'
 import { useUser } from '../store/auth'
-import type { Rarity } from '../types'
+import { openExchange } from '../store/exchange'
+import type { PublicProfile, Rarity } from '../types'
 
-export function CardDetails({ group, onClose }: { group: OwnedGroup | null; onClose: () => void }) {
+/**
+ * Карточка крупно. owner — чья это коллекция: свои карточки можно подарить или обменять,
+ * чужую — попросить в обмен.
+ */
+export function CardDetails({
+  group,
+  onClose,
+  owner,
+}: {
+  group: OwnedGroup | null
+  onClose: () => void
+  owner?: { self: true } | { self: false; profile: PublicProfile }
+}) {
   const novels = useNovelMap()
+  const me = useUser()
   const card = group?.card
   const novel = card?.novelId ? novels.get(card.novelId) : undefined
   return (
@@ -39,6 +52,43 @@ export function CardDetails({ group, onClose }: { group: OwnedGroup | null; onCl
               В коллекции: <span className="font-semibold text-fg">{group.items.length}</span>{' '}
               {plural(group.items.length, ['экземпляр', 'экземпляра', 'экземпляров'])}
             </p>
+            {me && owner?.self && (
+              <div className="mt-6 flex flex-wrap justify-center gap-2 sm:justify-start">
+                <Button
+                  variant="primary"
+                  icon={<Gift className="h-4 w-4" />}
+                  onClick={() => {
+                    onClose()
+                    openExchange({ mode: 'gift', give: [card.id] })
+                  }}
+                >
+                  Подарить
+                </Button>
+                <Button
+                  icon={<ArrowLeftRight className="h-4 w-4" />}
+                  onClick={() => {
+                    onClose()
+                    openExchange({ mode: 'trade', give: [card.id] })
+                  }}
+                >
+                  Обменять
+                </Button>
+              </div>
+            )}
+            {me && owner && !owner.self && owner.profile.id !== me.id && (
+              <div className="mt-6 flex justify-center sm:justify-start">
+                <Button
+                  variant="primary"
+                  icon={<ArrowLeftRight className="h-4 w-4" />}
+                  onClick={() => {
+                    onClose()
+                    openExchange({ mode: 'trade', partner: owner.profile, take: [card.id] })
+                  }}
+                >
+                  Попросить в обмен
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -57,7 +107,6 @@ export default function UserProfile() {
   const titles = useTitleMap()
   const [rarity, setRarity] = useState<Rarity | 'all'>('all')
   const [details, setDetails] = useState<OwnedGroup | null>(null)
-  const [trading, setTrading] = useState(false)
   useTitle(profile ? `${profile.displayName} (@${profile.username})` : 'Профиль')
 
   const groups = useMemo(() => groupOwned(owned, cardMap), [owned, cardMap])
@@ -118,9 +167,20 @@ export default function UserProfile() {
               <>
                 <FriendButton userId={profile.id} size="sm" />
                 {me && (
-                  <Button size="sm" variant="light" icon={<ArrowLeftRight className="h-4 w-4" />} onClick={() => setTrading(true)}>
-                    Обмен
-                  </Button>
+                  <>
+                    <Button size="sm" variant="light" icon={<Gift className="h-4 w-4" />} onClick={() => openExchange({ mode: 'gift', partner: profile })}>
+                      Подарить
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-white/30 bg-white/10 text-white hover:bg-white/20"
+                      icon={<ArrowLeftRight className="h-4 w-4" />}
+                      onClick={() => openExchange({ mode: 'trade', partner: profile })}
+                    >
+                      Обмен
+                    </Button>
+                  </>
                 )}
               </>
             )}
@@ -167,8 +227,7 @@ export default function UserProfile() {
         </div>
       </section>
 
-      <CardDetails group={details} onClose={() => setDetails(null)} />
-      {!self && me && <TradeDialog partner={profile} open={trading} onClose={() => setTrading(false)} />}
+      <CardDetails group={details} onClose={() => setDetails(null)} owner={self ? { self: true } : { self: false, profile }} />
     </Container>
   )
 }

@@ -773,9 +773,13 @@ create table if not exists public.user_cards (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
   card_id uuid not null references public.cards (id) on delete cascade,
-  source text not null default 'case' check (source in ('case', 'admin', 'trade')),
+  source text not null default 'case' check (source in ('case', 'admin', 'trade', 'gift')),
   obtained_at timestamptz not null default now()
 );
+
+-- Карточки можно дарить: для баз, созданных раньше, расширяем список источников
+alter table public.user_cards drop constraint if exists user_cards_source_check;
+alter table public.user_cards add constraint user_cards_source_check check (source in ('case', 'admin', 'trade', 'gift'));
 
 create index if not exists user_cards_user_idx on public.user_cards (user_id, obtained_at desc);
 
@@ -1009,6 +1013,37 @@ begin
 end;
 $$;
 
+-- Подарок: карточки сразу переходят к получателю, а в истории обменов остаётся запись
+-- (обмен, в котором ничего не просят взамен). Открытые обмены с этими карточками отменяются.
+create or replace function public.gift_cards(p_to uuid, p_cards uuid[], p_message text default '')
+returns public.trades
+language plpgsql security definer set search_path = public
+as $$
+declare
+  me uuid := auth.uid();
+  gift uuid[] := coalesce(p_cards, '{}');
+  result public.trades;
+begin
+  if me is null then raise exception 'Войдите в аккаунт, чтобы продолжить'; end if;
+  if p_to is null or p_to = me then raise exception 'Подарить карточку самому себе нельзя'; end if;
+  if not exists (select 1 from public.profiles where id = p_to) then raise exception 'Читатель не найден'; end if;
+  if cardinality(gift) = 0 then raise exception 'Выберите карточку для подарка'; end if;
+  if cardinality(gift) > 10 then raise exception 'За один раз можно подарить не больше 10 карточек'; end if;
+  if (select count(distinct x) from unnest(gift) x) <> cardinality(gift) then raise exception 'Карточка указана дважды'; end if;
+  perform 1 from public.user_cards where id = any(gift) for update;
+  if (select count(*) from public.user_cards where id = any(gift) and user_id = me) <> cardinality(gift) then
+    raise exception 'Часть карточек уже не у вас';
+  end if;
+  update public.trades set status = 'cancelled', resolved_at = now()
+  where status = 'pending' and (offer && gift or request && gift);
+  update public.user_cards set user_id = p_to, source = 'gift', obtained_at = now() where id = any(gift);
+  insert into public.trades (from_user, to_user, offer, request, message, status, resolved_at)
+  values (me, p_to, gift, '{}', left(coalesce(p_message, ''), 300), 'accepted', now())
+  returning * into result;
+  return result;
+end;
+$$;
+
 -- ───────────────────────────── Покупки кейсов ─────────────────────────────
 --  Счета выставляет серверная функция api/cryptobot.ts (Vercel) от имени сервиса:
 --  из браузера записи о покупках создать или изменить нельзя.
@@ -1081,7 +1116,8 @@ begin
     'public.send_friend_request(uuid)', 'public.respond_friend_request(uuid, boolean)', 'public.remove_friend(uuid)',
     'public.claim_weekly_case()', 'public.open_case(uuid)', 'public.grant_case(uuid, uuid, int)',
     'public.grant_card(uuid, uuid)', 'public.create_trade(uuid, uuid[], uuid[], text)',
-    'public.respond_trade(uuid, boolean)', 'public.cancel_trade(uuid)', 'public.admin_user_reading(uuid)'
+    'public.respond_trade(uuid, boolean)', 'public.cancel_trade(uuid)', 'public.gift_cards(uuid, uuid[], text)',
+    'public.admin_user_reading(uuid)'
   ] loop
     execute format('revoke all on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);

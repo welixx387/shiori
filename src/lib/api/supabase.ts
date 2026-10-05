@@ -31,6 +31,7 @@ import type {
   Shelf,
   Title,
   TitleInput,
+  GiftInput,
   Trade,
   TradeInput,
   UserData,
@@ -1162,6 +1163,18 @@ export class SupabaseApi implements Api {
     await this.requireUser()
     const { error } = await this.sb.rpc('cancel_trade', { p_id: id })
     if (error) fail(error)
+  }
+
+  async giftCards(input: GiftInput) {
+    await this.requireUser()
+    const { data, error } = await this.sb.rpc('gift_cards', { p_to: input.toUser, p_cards: input.cards, p_message: input.message ?? '' })
+    if (!error) return { trade: toTrade(data as Row), instant: true }
+    // В базе ещё нет функции подарков (schema.sql не обновлён) — дарим через обмен без встречной просьбы.
+    if (error.code === 'PGRST202' || /gift_cards/.test(error.message)) {
+      const trade = await this.createTrade({ toUser: input.toUser, offer: input.cards, request: [], message: input.message })
+      return { trade, instant: false }
+    }
+    fail(error)
   }
 
   // ───────────────────────── Покупки ─────────────────────────

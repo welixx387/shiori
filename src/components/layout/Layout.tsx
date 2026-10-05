@@ -10,6 +10,7 @@ import { EmptyState, PageLoader } from '../ui/Feedback'
 import { Toaster } from '../ui/Toaster'
 import { CommandPalette } from './CommandPalette'
 import { Footer } from './Footer'
+import { ExchangeHost } from '../collect/Exchange'
 import { Header, MobileNav } from './Header'
 
 function NavigationProgress() {
@@ -41,6 +42,7 @@ export function Root() {
       <Outlet />
       <CommandPalette />
       <Toaster />
+      <ExchangeHost />
       <ScrollRestoration getKey={(location) => (location.pathname.startsWith('/profile') ? '/profile' : location.key)} />
     </MotionConfig>
   )

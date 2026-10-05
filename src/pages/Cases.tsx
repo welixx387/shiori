@@ -12,6 +12,7 @@ import { EmptyState, Skeleton } from '../components/ui/Feedback'
 import { Modal } from '../components/ui/Overlay'
 import { Container } from '../components/ui/Section'
 import { useTitle } from '../hooks/useTitle'
+import { cn } from '../lib/cn'
 import { api, errorMessage } from '../lib/api'
 import { RARITIES, RARITY_ORDER, caseOdds, formatPrice } from '../lib/collect'
 import { formatDate, plural, timeAgo } from '../lib/format'
@@ -21,6 +22,7 @@ import {
   useCards,
   useCases,
   useMyCases,
+  useNewGifts,
   useProfileById,
   usePurchases,
   useTrades,
@@ -28,8 +30,10 @@ import {
   useWeekly,
 } from '../lib/queries'
 import { useUser } from '../store/auth'
+import { openExchange } from '../store/exchange'
+import { useSeen } from '../store/seen'
 import { toast } from '../store/toast'
-import type { CaseType, OwnedCase, Rarity, Trade } from '../types'
+import { isGift, type CaseType, type OwnedCase, type Rarity, type Trade } from '../types'
 import { CardDetails } from './UserProfile'
 
 type Tab = 'cases' | 'collection' | 'trades' | 'purchases'
@@ -351,11 +355,12 @@ function CollectionTab() {
             Собрано {groups.filter((g) => g.card.active).length} из {total}
           </p>
           <p className="text-sm text-muted">
-            Всего {owned.length} {plural(owned.length, ['карточка', 'карточки', 'карточек'])} · повторки можно обменять на странице читателя
+            Всего {owned.length} {plural(owned.length, ['карточка', 'карточки', 'карточек'])} · нажмите на карточку, чтобы подарить её или обменять
           </p>
         </div>
-        <RarityFilter value={rarity} onChange={setRarity} groups={groups} />
+        {owned.length > 0 && <ExchangeButtons />}
       </div>
+      <RarityFilter value={rarity} onChange={setRarity} groups={groups} className="mt-5" />
       <div className="mt-6">
         <CollectionGrid groups={shown} onPick={setDetails} empty={{ title: 'Коллекция пуста', description: 'Откройте бесплатный кейс на вкладке «Кейсы».' }} />
       </div>
@@ -371,7 +376,21 @@ function CollectionTab() {
           </div>
         </div>
       )}
-      <CardDetails group={details} onClose={() => setDetails(null)} />
+      <CardDetails group={details} onClose={() => setDetails(null)} owner={{ self: true }} />
+    </div>
+  )
+}
+
+/** «Подарить» и «Обменяться»: сначала выбираем читателя, потом карточки. */
+function ExchangeButtons({ className }: { className?: string }) {
+  return (
+    <div className={cn('flex flex-wrap gap-2', className)}>
+      <Button size="sm" variant="primary" icon={<Gift className="h-4 w-4" />} onClick={() => openExchange({ mode: 'gift' })}>
+        Подарить карточку
+      </Button>
+      <Button size="sm" icon={<ArrowLeftRight className="h-4 w-4" />} onClick={() => openExchange({ mode: 'trade' })}>
+        Предложить обмен
+      </Button>
     </div>
   )
 }
@@ -389,9 +408,10 @@ function TradeSide({ ids, cardIdsByOwned }: { ids: string[]; cardIdsByOwned: Map
   )
 }
 
-function TradeRow({ trade, cardIdsByOwned }: { trade: Trade; cardIdsByOwned: Map<string, string> }) {
+function TradeRow({ trade, cardIdsByOwned, fresh }: { trade: Trade; cardIdsByOwned: Map<string, string>; fresh?: boolean }) {
   const user = useUser()
   const incoming = trade.toUser === user?.id
+  const gift = isGift(trade)
   const { data: partner } = useProfileById(incoming ? trade.fromUser : trade.toUser)
   const [pending, setPending] = useState(false)
   const run = async (fn: () => Promise<void>, done: string) => {
@@ -407,34 +427,83 @@ function TradeRow({ trade, cardIdsByOwned }: { trade: Trade; cardIdsByOwned: Map
       setPending(false)
     }
   }
-  const statusLabel = { pending: 'ждёт ответа', accepted: 'обмен состоялся', declined: 'отклонено', cancelled: 'отменено' }[trade.status]
+  const statusLabel = gift
+    ? { pending: 'ждёт ответа', accepted: 'подарено', declined: 'отклонено', cancelled: 'отменено' }[trade.status]
+    : { pending: 'ждёт ответа', accepted: 'обмен состоялся', declined: 'отклонено', cancelled: 'отменено' }[trade.status]
+  const action = gift
+    ? incoming
+      ? trade.status === 'pending'
+        ? 'хочет подарить вам'
+        : 'подарок вам'
+      : 'ваш подарок'
+    : incoming
+      ? 'предлагает вам'
+      : 'вы предложили'
   return (
-    <div className="rounded-3xl border border-line/[0.08] bg-surface/50 p-5">
+    <div
+      className={cn(
+        'rounded-3xl border bg-surface/50 p-5 transition-colors',
+        fresh ? 'border-accent/50 shadow-[0_0_0_4px_rgb(var(--accent)/0.08)]' : 'border-line/[0.08]'
+      )}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <UserChip user={partner} size={36} sub={<span className="block text-xs text-muted">{incoming ? 'предлагает вам' : 'вы предложили'} · {timeAgo(trade.createdAt)}</span>} />
-        <span className="rounded-full bg-line/[0.06] px-3 py-1 text-xs font-medium text-muted">{statusLabel}</span>
+        <UserChip
+          user={partner}
+          size={36}
+          sub={
+            <span className="block text-xs text-muted">
+              {action} · {timeAgo(trade.resolvedAt ?? trade.createdAt)}
+            </span>
+          }
+        />
+        <span className="flex items-center gap-2">
+          {fresh && <span className="rounded-full bg-ember px-2.5 py-0.5 text-[11px] font-bold text-white">новое</span>}
+          <span className={cn('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium', gift ? 'bg-accent/10 text-accent' : 'bg-line/[0.06] text-muted')}>
+            {gift && <Gift className="h-3.5 w-3.5" />}
+            {statusLabel}
+          </span>
+        </span>
       </div>
       {trade.message && <p className="mt-3 rounded-2xl bg-line/[0.04] px-4 py-2.5 text-sm text-fg-2">«{trade.message}»</p>}
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{incoming ? 'Вы получите' : 'Вы отдадите'}</p>
+      {gift ? (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
+            {incoming
+              ? trade.status === 'pending'
+                ? 'Вам дарят'
+                : trade.status === 'accepted'
+                  ? 'Вам подарили'
+                  : 'Вам хотели подарить'
+              : trade.status === 'pending'
+                ? 'Вы дарите'
+                : trade.status === 'accepted'
+                  ? 'Вы подарили'
+                  : 'Вы хотели подарить'}
+          </p>
           <TradeSide ids={trade.offer} cardIdsByOwned={cardIdsByOwned} />
         </div>
-        <ArrowLeftRight className="hidden h-5 w-5 text-faint sm:block" />
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{incoming ? 'Вы отдадите' : 'Вы получите'}</p>
-          <TradeSide ids={trade.request} cardIdsByOwned={cardIdsByOwned} />
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{incoming ? 'Вы получите' : 'Вы отдадите'}</p>
+            <TradeSide ids={trade.offer} cardIdsByOwned={cardIdsByOwned} />
+          </div>
+          <ArrowLeftRight className="hidden h-5 w-5 text-faint sm:block" />
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{incoming ? 'Вы отдадите' : 'Вы получите'}</p>
+            <TradeSide ids={trade.request} cardIdsByOwned={cardIdsByOwned} />
+          </div>
         </div>
-      </div>
+      )}
       {trade.status === 'pending' && (
         <div className="mt-4 flex justify-end gap-2">
           {incoming ? (
             <>
-              <Button size="sm" variant="ghost" disabled={pending} icon={<X className="h-4 w-4" />} onClick={() => run(() => api.respondTrade(trade.id, false), 'Предложение отклонено')}>
-                Отклонить
+              <Button size="sm" variant="ghost" disabled={pending} icon={<X className="h-4 w-4" />} onClick={() => run(() => api.respondTrade(trade.id, false), gift ? 'Вы отказались от подарка' : 'Предложение отклонено')}>
+                {gift ? 'Отказаться' : 'Отклонить'}
               </Button>
-              <Button size="sm" variant="primary" loading={pending} icon={<Check className="h-4 w-4" />} onClick={() => run(() => api.respondTrade(trade.id, true), 'Обмен состоялся')}>
-                Принять обмен
+              <Button size="sm" variant="primary" loading={pending} icon={gift ? <Gift className="h-4 w-4" /> : <Check className="h-4 w-4" />} onClick={() => run(() => api.respondTrade(trade.id, true), gift ? 'Подарок принят' : 'Обмен состоялся')}>
+                {gift ? 'Принять подарок' : 'Принять обмен'}
               </Button>
             </>
           ) : (
@@ -449,7 +518,18 @@ function TradeRow({ trade, cardIdsByOwned }: { trade: Trade; cardIdsByOwned: Map
 }
 
 function TradesTab() {
+  const user = useUser()
   const { data: trades, isLoading } = useTrades()
+  const markGifts = useSeen((st) => st.markGifts)
+  // Новые подарки подсвечиваем, пока вкладка открыта, а значок в меню гасим сразу.
+  const newGifts = useNewGifts()
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    if (!user || !newGifts.length) return
+    setFresh((prev) => new Set([...prev, ...newGifts.map((t) => t.id)]))
+    const newest = newGifts.map((t) => t.resolvedAt ?? t.createdAt).sort((a, b) => Date.parse(b) - Date.parse(a))[0]
+    markGifts(user.id, newest)
+  }, [newGifts, user, markGifts])
   const ids = useMemo(() => [...new Set(trades.flatMap((t) => [...t.offer, ...t.request]))], [trades])
   const { data: owned = [] } = useQuery({
     queryKey: ['trade-cards', ids.join(',')],
@@ -464,28 +544,33 @@ function TradesTab() {
   if (!trades.length) {
     return (
       <EmptyState
-        kanji="換"
-        title="Обменов пока не было"
-        description="Откройте профиль друга и нажмите «Обмен», чтобы предложить свои карточки за его."
-        action={
-          <ButtonLink to="/people" variant="primary">
-            Найти читателей
-          </ButtonLink>
-        }
+        kanji="贈"
+        title="Подарков и обменов пока не было"
+        description="Подарите карточку другу или предложите обмен: свои повторки — за то, чего не хватает в коллекции."
+        action={<ExchangeButtons className="justify-center" />}
       />
     )
   }
+  const freshFirst = [...history].sort((a, b) => Number(fresh.has(b.id)) - Number(fresh.has(a.id)))
   return (
     <div className="space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Подарок приходит сразу, а обмен — когда его примут. Предложения ждут ответа здесь.
+        </p>
+        <ExchangeButtons />
+      </div>
       <div className="space-y-3">
         {active.length ? active.map((t) => <TradeRow key={t.id} trade={t} cardIdsByOwned={cardIdsByOwned} />) : <p className="text-sm text-muted">Активных предложений нет.</p>}
       </div>
       {history.length > 0 && (
         <div>
           <p className="mb-3 text-sm font-semibold text-muted">История</p>
-          <div className="space-y-3 opacity-80">
-            {history.slice(0, 30).map((t) => (
-              <TradeRow key={t.id} trade={t} cardIdsByOwned={cardIdsByOwned} />
+          <div className="space-y-3">
+            {freshFirst.slice(0, 30).map((t) => (
+              <div key={t.id} className={fresh.has(t.id) ? '' : 'opacity-80'}>
+                <TradeRow trade={t} cardIdsByOwned={cardIdsByOwned} fresh={fresh.has(t.id)} />
+              </div>
             ))}
           </div>
         </div>
@@ -529,7 +614,8 @@ export default function Cases() {
   const tab = (params.get('tab') as Tab) || 'cases'
   const { data: trades } = useTrades()
   const { data: purchases = [] } = usePurchases()
-  const incomingTrades = trades.filter((t) => t.status === 'pending' && t.toUser === user?.id).length
+  const newGifts = useNewGifts()
+  const incomingTrades = trades.filter((t) => t.status === 'pending' && t.toUser === user?.id).length + newGifts.length
 
   // Вернулись из @CryptoBot — проверяем оплату неоплаченных счетов.
   const hasActive = purchases.some((p) => p.status === 'active')
@@ -553,7 +639,7 @@ export default function Cases() {
       </p>
       <h1 className="mt-1 font-display text-3xl font-bold tracking-tight sm:text-4xl">Кейсы и карточки</h1>
       <p className="mt-2 max-w-2xl text-muted">
-        Раз в неделю — бесплатный кейс со случайной карточкой. Собирайте коллекцию, меняйтесь повторками с друзьями и охотьтесь за легендарными.
+        Раз в неделю — бесплатный кейс со случайной карточкой. Собирайте коллекцию, дарите карточки друзьям, меняйтесь повторками и охотьтесь за легендарными.
       </p>
 
       <Tabs
@@ -569,7 +655,7 @@ export default function Cases() {
         tabs={[
           { value: 'cases', label: 'Кейсы', icon: <Package className="h-4 w-4" /> },
           { value: 'collection', label: 'Коллекция', icon: <Gem className="h-4 w-4" /> },
-          { value: 'trades', label: 'Обмены', icon: <ArrowLeftRight className="h-4 w-4" />, count: incomingTrades || undefined },
+          { value: 'trades', label: 'Обмены и подарки', icon: <ArrowLeftRight className="h-4 w-4" />, count: incomingTrades || undefined },
           ...(api.paymentsEnabled && user ? [{ value: 'purchases' as Tab, label: 'Покупки', icon: <Receipt className="h-4 w-4" /> }] : []),
         ]}
       />

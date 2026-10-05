@@ -28,6 +28,7 @@ import type {
   Shelf,
   Title,
   TitleInput,
+  GiftInput,
   Trade,
   TradeInput,
   UserData,
@@ -172,6 +173,11 @@ export interface Api {
   createTrade(input: TradeInput): Promise<Trade>
   respondTrade(id: string, accept: boolean): Promise<void>
   cancelTrade(id: string): Promise<void>
+  /**
+   * Подарить свои карточки. instant — карточки уже у получателя;
+   * false — база ещё не обновлена, и получатель должен принять подарок во вкладке «Обмены».
+   */
+  giftCards(input: GiftInput): Promise<{ trade: Trade; instant: boolean }>
 
   // ── Покупка кейсов (@CryptoBot, только облачный режим) ──
   readonly paymentsEnabled: boolean
