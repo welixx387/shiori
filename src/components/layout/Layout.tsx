@@ -100,14 +100,14 @@ export function RequireAuth({ children, admin }: { children: ReactNode; admin?: 
 
 export function NotFound() {
   return (
-    <div className="relative flex min-h-[70vh] flex-col items-center justify-center px-6 pt-24 text-center">
+    <div className="relative flex min-h-[70vh] flex-col items-center justify-center overflow-x-clip px-6 pt-24 text-center">
       <motion.div
         initial={{ opacity: 0, scale: 0.8, rotate: -8 }}
         animate={{ opacity: 1, scale: 1, rotate: 0 }}
         transition={{ type: 'spring', stiffness: 120, damping: 12 }}
         className="relative"
       >
-        <span className="font-display text-[9rem] font-black leading-none tracking-tighter text-outline sm:text-[12rem]">404</span>
+        <span className="font-display text-[7rem] font-black leading-none tracking-tighter text-outline min-[400px]:text-[9rem] sm:text-[12rem]">404</span>
         <span className="absolute inset-0 flex items-center justify-center font-brush text-7xl text-ember sm:text-8xl">迷</span>
       </motion.div>
       <h1 className="mt-4 font-display text-2xl font-bold tracking-tight">Эта страница затерялась между главами</h1>

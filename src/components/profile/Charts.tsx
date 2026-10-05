@@ -192,7 +192,7 @@ export function GenreBars({ genres, unit }: { genres: { name: string; count: num
   return (
     <ul className="space-y-3.5">
       {top.map((g, i) => (
-        <li key={g.name} className="grid grid-cols-[7.5rem_1fr] items-center gap-3 text-sm sm:grid-cols-[9rem_1fr]">
+        <li key={g.name} className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-3 text-sm sm:grid-cols-[9rem_minmax(0,1fr)]">
           <span className="truncate text-fg-2">{g.name}</span>
           <span className="flex items-center gap-2.5">
             <motion.span

@@ -249,7 +249,7 @@ function CasesTab() {
             <span className="text-sm font-normal text-faint">{closed.length || ''}</span>
           </h2>
           {grouped.length ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {grouped.map(([caseId, list]) => {
                 const box = boxOf(caseId)
                 if (!box) return null
@@ -288,7 +288,7 @@ function CasesTab() {
           <ShoppingBag className="h-5 w-5 text-accent" /> Магазин кейсов
         </h2>
         {shop.length ? (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {shop.map((box) => (
               <div key={box.id} className="flex flex-col rounded-3xl border border-line/[0.08] bg-surface/50 p-5">
                 <div className="flex items-center gap-4">
@@ -415,7 +415,7 @@ function TradeRow({ trade, cardIdsByOwned }: { trade: Trade; cardIdsByOwned: Map
         <span className="rounded-full bg-line/[0.06] px-3 py-1 text-xs font-medium text-muted">{statusLabel}</span>
       </div>
       {trade.message && <p className="mt-3 rounded-2xl bg-line/[0.04] px-4 py-2.5 text-sm text-fg-2">«{trade.message}»</p>}
-      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{incoming ? 'Вы получите' : 'Вы отдадите'}</p>
           <TradeSide ids={trade.offer} cardIdsByOwned={cardIdsByOwned} />

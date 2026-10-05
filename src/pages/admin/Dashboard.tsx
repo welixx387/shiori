@@ -142,7 +142,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </Link>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               <label className="mr-3 flex items-center gap-2 text-xs text-muted">
                 <Switch checked={n.published} onChange={(v) => togglePublished(n, v)} />
                 <span className="w-24">{n.published ? 'Опубликован' : 'Черновик'}</span>

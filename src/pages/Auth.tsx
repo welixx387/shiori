@@ -180,7 +180,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="mx-auto grid min-h-[100dvh] max-w-7xl gap-6 px-4 pb-28 pt-24 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pb-10">
+    <div className="mx-auto grid grid-cols-1 min-h-[100dvh] max-w-7xl gap-6 px-4 pb-28 pt-24 sm:px-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:pb-10">
       <ArtPanel />
 
       <div className="flex items-center justify-center">

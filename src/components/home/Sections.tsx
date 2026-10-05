@@ -20,38 +20,41 @@ const EASE = [0.22, 1, 0.36, 1] as const
 export function TickerBand() {
   const words = ['Читай', '読む', 'Мечтай', '夢', 'Погружайся', '物語', 'Не спи', '夜']
   return (
-    <section className="relative -rotate-[1.5deg] py-6">
-      <Marquee duration={36}>
-        {words.map((w, i) => (
-          <span key={i} className="flex items-center">
-            <span
-              className={cn(
-                'px-6 font-display text-5xl font-black uppercase leading-none tracking-tight sm:text-7xl',
-                i % 2 ? 'font-jp text-ember' : 'text-outline'
-              )}
-            >
-              {w}
+    // Повёрнутая лента шире экрана — края обрезаем, чтобы страница не прокручивалась вбок.
+    <div className="overflow-x-clip">
+      <section className="relative -rotate-[1.5deg] py-6">
+        <Marquee duration={36}>
+          {words.map((w, i) => (
+            <span key={i} className="flex items-center">
+              <span
+                className={cn(
+                  'px-6 font-display text-5xl font-black uppercase leading-none tracking-tight sm:text-7xl',
+                  i % 2 ? 'font-jp text-ember' : 'text-outline'
+                )}
+              >
+                {w}
+              </span>
+              <Sparkles className="h-6 w-6 text-accent-2 sm:h-8 sm:w-8" />
             </span>
-            <Sparkles className="h-6 w-6 text-accent-2 sm:h-8 sm:w-8" />
-          </span>
-        ))}
-      </Marquee>
-      <Marquee duration={50} reverse className="mt-5">
-        {GENRES.map((g) => {
-          const Icon = g.icon
-          return (
-            <Link
-              key={g.name}
-              to={`/catalog?genres=${encodeURIComponent(g.name)}`}
-              className="mx-1.5 inline-flex items-center gap-2 rounded-full border border-line/10 bg-surface/50 px-4 py-2 text-sm text-fg-2 transition-colors hover:border-accent/40 hover:text-fg"
-            >
-              <Icon className="h-4 w-4" style={{ color: `hsl(${g.hue} 80% 62%)` }} />
-              {g.name}
-            </Link>
-          )
-        })}
-      </Marquee>
-    </section>
+          ))}
+        </Marquee>
+        <Marquee duration={50} reverse className="mt-5">
+          {GENRES.map((g) => {
+            const Icon = g.icon
+            return (
+              <Link
+                key={g.name}
+                to={`/catalog?genres=${encodeURIComponent(g.name)}`}
+                className="mx-1.5 inline-flex items-center gap-2 rounded-full border border-line/10 bg-surface/50 px-4 py-2 text-sm text-fg-2 transition-colors hover:border-accent/40 hover:text-fg"
+              >
+                <Icon className="h-4 w-4" style={{ color: `hsl(${g.hue} 80% 62%)` }} />
+                {g.name}
+              </Link>
+            )
+          })}
+        </Marquee>
+      </section>
+    </div>
   )
 }
 
@@ -119,7 +122,7 @@ export function FreshChapters({ novels }: { novels: Novel[] }) {
 
   return (
     <Container className="mt-24">
-      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           <SectionHeader kanji="新" kicker="Только что вышло" title="Свежие главы" link={{ to: '/catalog?sort=updated', label: 'Все обновления' }} />
           <div className="space-y-2">
@@ -333,13 +336,13 @@ export function JoinCta({ novels }: { novels: Novel[] }) {
           <div className="bg-ember-animated absolute inset-0 -z-20 opacity-90" />
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(80%_120%_at_100%_0%,transparent,rgba(9,9,15,0.55))]" />
           <Embers className="-z-10" density={0.6} />
-          <div className="grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
+          <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="text-white">
               <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/80">Бесплатно и без рекламы</p>
               <h2 className="mt-3 font-display text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
                 Соберите свою полку историй
               </h2>
-              <ul className="mt-6 grid gap-2.5 text-[15px] text-white/90 sm:grid-cols-2">
+              <ul className="mt-6 grid grid-cols-1 gap-2.5 text-[15px] text-white/90 sm:grid-cols-2">
                 {['Прогресс на всех устройствах', 'Полки: читаю, в планах, прочитано', 'Закладки и цитаты', 'Статистика и достижения'].map((t) => (
                   <li key={t} className="flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-xs">✓</span>

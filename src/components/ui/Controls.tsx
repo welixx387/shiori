@@ -92,7 +92,7 @@ export function Segmented<T extends string>({ value, options, onChange, classNam
   const id = useId()
   return (
     <div
-      className={cn('inline-flex rounded-full border border-line/10 bg-line/[0.04] p-1', className)}
+      className={cn('scrollbar-none inline-flex max-w-full overflow-x-auto rounded-full border border-line/10 bg-line/[0.04] p-1', className)}
       role="radiogroup"
     >
       {options.map((o) => {

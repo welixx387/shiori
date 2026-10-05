@@ -156,7 +156,7 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
   const totalWords = included.reduce((s, r) => s + r.words, 0)
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="space-y-5">
         <section className="rounded-[32px] border border-line/[0.08] bg-surface/50 p-5 sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -256,7 +256,7 @@ export default function ImportSplit({ novel, onDone }: { novel: Novel; onDone: (
               {mode === 'regex' && <Input label="Регулярное выражение" value={pattern} onChange={(e) => setPattern(e.target.value)} error={patternError || undefined} className="font-mono text-xs" />}
             </>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input label="Том" type="number" min={1} value={volume} onChange={(e) => setVolume(Math.max(1, Number(e.target.value) || 1))} />
             <Input
               label="Начать нумерацию с"

@@ -122,7 +122,7 @@ export default function UserManage() {
         </ButtonLink>
       </div>
 
-      <div className="mt-8 grid gap-5 lg:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Panel icon={<UserRound className="h-5 w-5 text-accent" />} title="Профиль">
           <div className="space-y-3">
             <Input label="Никнейм" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />

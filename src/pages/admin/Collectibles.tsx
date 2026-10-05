@@ -133,7 +133,7 @@ function CardEditor({ initial, id, onClose }: { initial: CardInput | null; id?: 
 
   return (
     <Modal open={Boolean(initial)} onClose={onClose} size="xl" title={id ? 'Карточка' : 'Новая карточка'}>
-      <div className="grid gap-6 md:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="space-y-4">
           <Input label="Персонаж" value={form.name} onChange={(e) => set({ name: e.target.value.slice(0, 60) })} placeholder="Например: Киётака Аянокодзи" />
           <Textarea label="Описание" value={form.description} onChange={(e) => set({ description: e.target.value })} rows={3} placeholder="Пара строк о персонаже — показывается при просмотре карточки" />
@@ -301,7 +301,7 @@ function CaseEditor({ initial, id, onClose }: { initial: CaseInput; id?: string;
 
   return (
     <Modal open onClose={onClose} size="xl" title={id ? 'Кейс' : 'Новый кейс'}>
-      <div className="grid gap-6 md:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="space-y-4">
           <Input label="Название" value={form.name} onChange={(e) => set({ name: e.target.value.slice(0, 60) })} placeholder="Например: Кейс класса D" />
           <Textarea label="Описание" value={form.description} onChange={(e) => set({ description: e.target.value })} rows={2} />
@@ -312,7 +312,7 @@ function CaseEditor({ initial, id, onClose }: { initial: CaseInput; id?: string;
             description="Каждый читатель может забирать его раз в 7 дней. Если таких кейсов несколько, выдаётся самый первый."
           />
           {!form.weekly && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input
                 label="Цена"
                 type="number"
@@ -328,7 +328,7 @@ function CaseEditor({ initial, id, onClose }: { initial: CaseInput; id?: string;
           <NovelSelect label="Карточки из тайтла" value={form.novelId} onChange={(novelId) => set({ novelId })} hint="«Не важно» — выпадают любые активные карточки" />
           <div>
             <p className="mb-2 px-1 text-[13px] font-medium text-fg-2">Шансы редкостей (веса)</p>
-            <div className="grid gap-2 sm:grid-cols-5">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
               {RARITY_ORDER.map((r) => (
                 <label key={r} className="rounded-2xl bg-line/[0.04] p-2.5">
                   <span className="block text-[11px] font-semibold" style={{ color: RARITIES[r].color }}>
@@ -391,7 +391,7 @@ export function CasesAdmin() {
           Новый кейс
         </Button>
       </div>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading && <Skeleton className="h-40 rounded-3xl" />}
         {cases.map((c) => (
           <div key={c.id} className={cn('flex items-center gap-4 rounded-3xl border border-line/[0.08] bg-surface/50 p-4', !c.active && 'opacity-60')}>

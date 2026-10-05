@@ -120,7 +120,7 @@ function ProfileCard() {
             </button>
           )}
         </div>
-        <div className="grid flex-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 flex-1 gap-4 sm:grid-cols-2">
           <Input label="Имя" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={40} />
           <Input label="Никнейм" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={24} error={nameError || undefined} />
           <Textarea
@@ -220,7 +220,7 @@ function AccountCard() {
 
   return (
     <Card title="Аккаунт" description="Email и пароль для входа" icon={<KeyRound className="h-5 w-5" />}>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-3">
           <Input label="Email" type="email" icon={<Mail className="h-4 w-4" />} value={email} onChange={(e) => setEmail(e.target.value)} />
           <Button size="sm" onClick={changeEmail} loading={pending === 'email'} disabled={email.trim().toLowerCase() === user.email}>
@@ -298,7 +298,7 @@ function DangerCard() {
         <h2 className="font-display text-base font-semibold tracking-tight">Выход и удаление</h2>
         <p className="mt-0.5 text-sm text-muted">Удаление аккаунта сотрёт полки, историю, оценки и закладки без возможности восстановления.</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="secondary"
           icon={<LogOut className="h-4 w-4" />}

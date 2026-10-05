@@ -15,7 +15,7 @@ import { toast } from '../store/toast'
 function HomeSkeleton() {
   return (
     <Container className="pt-32">
-      <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_1fr]">
+      <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div className="space-y-5">
           <div className="skeleton h-4 w-40 rounded-full" />
           <div className="skeleton h-16 w-4/5 rounded-3xl" />

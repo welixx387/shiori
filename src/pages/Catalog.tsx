@@ -319,7 +319,7 @@ export default function Catalog() {
         </p>
       </div>
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-[280px_1fr]">
+      <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <div className="sticky top-28 rounded-[28px] border border-line/[0.08] bg-surface/40 p-6">
             <FiltersPanel {...state} />

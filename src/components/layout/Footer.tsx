@@ -12,7 +12,7 @@ export function Footer() {
       >
         読書
       </div>
-      <div className="relative mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr]">
+      <div className="relative mx-auto grid grid-cols-1 max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div>
           <Logo />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">

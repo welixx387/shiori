@@ -148,7 +148,7 @@ function NovelForm({ novel }: { novel?: Novel }) {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-6">
         <section className="space-y-4 rounded-[32px] border border-line/[0.08] bg-surface/50 p-5 sm:p-7">
           <h2 className="font-display text-base font-semibold">Основное</h2>
@@ -170,7 +170,7 @@ function NovelForm({ novel }: { novel?: Novel }) {
             }
           />
           <TagInput label="Альтернативные названия" hint="Оригинальное, английское, ромадзи — по ним тоже ищут. Enter или запятая — добавить." value={form.altTitles} onChange={(v) => set('altTitles', v)} placeholder="Saigo no Toudai no Shisho" />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input label="Автор" value={form.author} onChange={(e) => set('author', e.target.value)} />
             <Input label="Художник" value={form.illustrator} onChange={(e) => set('illustrator', e.target.value)} />
           </div>
@@ -215,7 +215,7 @@ function NovelForm({ novel }: { novel?: Novel }) {
               options={STATUS_ORDER.map((s) => ({ value: s, label: STATUSES[s].label, icon: <span className={cn('h-1.5 w-1.5 rounded-full', STATUSES[s].dot)} /> }))}
             />
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Select label="Страна" value={form.country} onChange={(v) => set('country', v)} options={COUNTRIES.map((c) => ({ value: c, label: c }))} />
             <Input
               label="Год"

@@ -224,7 +224,7 @@ export default function ChapterEditor() {
         </div>
       )}
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-[110px_130px_1fr]">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-[110px_130px_minmax(0,1fr)]">
         <Input label="Том" type="number" min={1} value={form.volume} onChange={(e) => set('volume', Math.max(1, Number(e.target.value) || 1))} />
         <Input label="Номер главы" type="number" min={0} step={0.5} value={form.number} onChange={(e) => set('number', Number(e.target.value) || 0)} />
         <Input label="Название" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Например: Свет, который ищет корабли" />

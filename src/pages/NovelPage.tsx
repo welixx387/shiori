@@ -164,7 +164,7 @@ export default function NovelPage() {
             <span className="truncate text-fg-2">{novel.title}</span>
           </nav>
 
-          <div className="grid gap-8 md:grid-cols-[260px_1fr] lg:grid-cols-[300px_1fr] lg:gap-14">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-14">
             <motion.div
               initial={{ opacity: 0, y: 30, rotate: -3 }}
               animate={{ opacity: 1, y: 0, rotate: 0 }}
@@ -234,7 +234,7 @@ export default function NovelPage() {
       </section>
 
       <Container>
-        <div className="grid gap-10 lg:grid-cols-[1fr_340px]">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
             <Tabs
               value={tab}
@@ -288,7 +288,7 @@ export default function NovelPage() {
                           Все главы →
                         </button>
                       </div>
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {published.slice(0, 4).map((c) => (
                           <Link
                             key={c.id}

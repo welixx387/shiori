@@ -244,7 +244,7 @@ export default function Profile() {
               <ActivityHeatmap byDay={stats.byDay} />
             </section>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <section className="rounded-[32px] border border-line/[0.08] bg-surface/50 p-5 sm:p-7">
                 <h2 className="font-display text-lg font-semibold tracking-tight">Любимые жанры</h2>
                 <p className="mb-5 text-sm text-muted">{data.reads.length ? 'По прочитанным главам' : 'По тайтлам в библиотеке'}</p>

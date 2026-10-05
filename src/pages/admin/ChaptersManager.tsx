@@ -159,27 +159,30 @@ export default function ChaptersManager({ novel, onImport }: { novel: Novel; onI
                           {formatNumber(c.wordCount)} слов · {formatDate(c.createdAt)}
                         </p>
                       </Link>
-                      <label className="flex items-center gap-2 text-xs text-muted">
-                        <Switch checked={c.published} onChange={(v) => setPublished([c.id], v)} />
-                        <span className="w-[4.5rem]">{c.published ? 'Вышла' : 'Черновик'}</span>
-                      </label>
-                      <Link
-                        to={`/read/${novel.slug}/${c.id}`}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-fg-2 hover:bg-line/[0.07] hover:text-fg"
-                        title="Открыть в читалке"
-                      >
-                        <BookOpen className="h-4 w-4" />
-                      </Link>
-                      <Link
-                        to={`/admin/novels/${novel.id}/chapters/${c.id}`}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-fg-2 hover:bg-line/[0.07] hover:text-fg"
-                        title="Редактировать"
-                      >
-                        <PenLine className="h-4 w-4" />
-                      </Link>
-                      <IconButton label="Удалить главу" size="sm" onClick={() => setConfirm([c.id])} className="hover:text-danger">
-                        <Trash className="h-4 w-4" />
-                      </IconButton>
+                      {/* На телефоне действия уходят на вторую строку, чтобы название главы не сжималось */}
+                      <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
+                        <label className="mr-1 flex items-center gap-2 text-xs text-muted">
+                          <Switch checked={c.published} onChange={(v) => setPublished([c.id], v)} />
+                          <span className="w-[4.5rem]">{c.published ? 'Вышла' : 'Черновик'}</span>
+                        </label>
+                        <Link
+                          to={`/read/${novel.slug}/${c.id}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-fg-2 hover:bg-line/[0.07] hover:text-fg"
+                          title="Открыть в читалке"
+                        >
+                          <BookOpen className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          to={`/admin/novels/${novel.id}/chapters/${c.id}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-fg-2 hover:bg-line/[0.07] hover:text-fg"
+                          title="Редактировать"
+                        >
+                          <PenLine className="h-4 w-4" />
+                        </Link>
+                        <IconButton label="Удалить главу" size="sm" onClick={() => setConfirm([c.id])} className="hover:text-danger">
+                          <Trash className="h-4 w-4" />
+                        </IconButton>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -106,7 +106,7 @@ export function TradeDialog({ partner, open, onClose }: { partner: PublicProfile
       title={`Обмен с ${partner.displayName}`}
       description="Отметьте карточки: свои — что отдаёте, собеседника — что хотите получить. Можно и просто подарить карточку."
     >
-      <div className="grid gap-6 lg:grid-cols-[1fr_auto_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <div>
           <p className="mb-2 text-sm font-semibold">Вы отдаёте · {offer.length}</p>
           <Picker groups={myGroups} picked={give} onChange={setGive} loading={mine.isLoading} empty="У вас пока нет карточек" />

@@ -88,7 +88,7 @@ export function Hero({ novels }: { novels: Novel[] }) {
         </motion.span>
       </AnimatePresence>
 
-      <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:gap-6">
+      <div className="mx-auto grid grid-cols-1 max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-6">
         {/* Текст */}
         <div className="order-2 lg:order-1">
           <div className="flex items-center gap-3">
